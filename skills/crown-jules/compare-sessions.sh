@@ -1,7 +1,7 @@
 #!/bin/bash
 # Crown Jules - Session Comparison Script
 # Usage: ./compare-sessions.sh <run_id> [base_branch]
-# Analyzes all worktrees and generates comparison report with metrics and scoring
+# Analyzes patch files and generates comparison report with metrics and scoring
 # Compatible with bash 3.2+ (macOS default)
 
 set -e
@@ -24,23 +24,22 @@ fi
 
 # All Crown Jules files live under .crown-jules/<run_id>/
 CROWN_JULES_DIR="$REPO_ROOT/.crown-jules/$RUN_ID"
-WORKTREE_DIR="$CROWN_JULES_DIR/worktrees"
 REPORT_JSON="$CROWN_JULES_DIR/report.json"
 REPORT_MD="$CROWN_JULES_DIR/report.md"
 
-# Check if worktree directory exists
-if [ ! -d "$WORKTREE_DIR" ]; then
-    echo "ERROR: No worktrees found at $WORKTREE_DIR"
-    echo "Run setup-worktrees.sh $RUN_ID first."
+# Check if directory exists
+if [ ! -d "$CROWN_JULES_DIR" ]; then
+    echo "ERROR: No Crown Jules directory found at $CROWN_JULES_DIR"
+    echo "Run generate-patches.sh $RUN_ID first."
     exit 1
 fi
 
-# Find all session worktrees
-SESSION_DIRS=($(find "$WORKTREE_DIR" -maxdepth 1 -type d -name "session-*" 2>/dev/null | sort))
-SESSION_COUNT=${#SESSION_DIRS[@]}
+# Find all patch files
+PATCH_FILES=($(find "$CROWN_JULES_DIR" -maxdepth 1 -type f -name "*.patch" 2>/dev/null | sort))
+SESSION_COUNT=${#PATCH_FILES[@]}
 
 if [ $SESSION_COUNT -eq 0 ]; then
-    echo "ERROR: No session worktrees found in $WORKTREE_DIR"
+    echo "ERROR: No patch files found in $CROWN_JULES_DIR"
     exit 1
 fi
 
@@ -49,57 +48,65 @@ echo "Run ID: $RUN_ID"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Initialize JSON report
-echo '{"sessions": [], "generated_at": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'", "base_branch": "'$BASE_BRANCH'", "run_id": "'$RUN_ID'"}' > "$REPORT_JSON"
+# Function to analyze a patch file
+analyze_patch() {
+    local patch_file="$1"
+    local session_id=$(basename "$patch_file" .patch)
 
-# Function to count pattern occurrences in diff
-count_pattern() {
-    local diff="$1"
-    local pattern="$2"
-    echo "$diff" | grep -c "$pattern" 2>/dev/null || echo "0"
-}
+    # Read patch content
+    local patch_content=$(cat "$patch_file")
 
-# Function to analyze a single session
-analyze_session() {
-    local worktree_path="$1"
-    local session_id=$(basename "$worktree_path" | sed 's/session-//')
+    # Parse numstat-like info from the patch
+    # Count files by looking for diff --git lines
+    local files_changed=$(echo "$patch_content" | grep -c "^diff --git" 2>/dev/null || echo "0")
 
-    # Use git -C instead of cd to avoid issues with shell hooks (e.g., zoxide)
-    # Get diff against base branch
-    local diff_stat=$(git -C "$worktree_path" diff "$BASE_BRANCH" --stat 2>/dev/null || echo "")
-    local diff_full=$(git -C "$worktree_path" diff "$BASE_BRANCH" 2>/dev/null || echo "")
-    local diff_numstat=$(git -C "$worktree_path" diff "$BASE_BRANCH" --numstat 2>/dev/null || echo "")
+    # Count hunks
+    local hunks=$(echo "$patch_content" | grep -c "^@@" 2>/dev/null || echo "0")
 
-    # Change metrics
-    local lines_added=$(echo "$diff_numstat" | awk '{sum += $1} END {print sum+0}')
-    local lines_removed=$(echo "$diff_numstat" | awk '{sum += $2} END {print sum+0}')
-    local files_changed=$(echo "$diff_numstat" | wc -l | tr -d ' ')
-    local hunks=$(echo "$diff_full" | grep -c "^@@" 2>/dev/null || echo "0")
+    # Count added/removed lines (lines starting with + or - but not ++ or --)
+    local lines_added=$(echo "$patch_content" | grep -c "^+[^+]" 2>/dev/null || echo "0")
+    local lines_removed=$(echo "$patch_content" | grep -c "^-[^-]" 2>/dev/null || echo "0")
 
-    # File type analysis
-    local new_files=$(git -C "$worktree_path" diff "$BASE_BRANCH" --diff-filter=A --name-only 2>/dev/null | wc -l | tr -d ' ')
-    local modified_files=$(git -C "$worktree_path" diff "$BASE_BRANCH" --diff-filter=M --name-only 2>/dev/null | wc -l | tr -d ' ')
-    local deleted_files=$(git -C "$worktree_path" diff "$BASE_BRANCH" --diff-filter=D --name-only 2>/dev/null | wc -l | tr -d ' ')
+    # Count new files (diff --git where old file is /dev/null)
+    local new_files=$(echo "$patch_content" | grep -c "^--- /dev/null" 2>/dev/null || echo "0")
 
-    # Pattern detection
-    local test_files=$(git -C "$worktree_path" diff "$BASE_BRANCH" --name-only 2>/dev/null | grep -cE '\.(test|spec)\.(js|ts|jsx|tsx|py|rb)$|_test\.(go|py)$|Test\.java$' 2>/dev/null || echo "0")
-    local type_defs=$(echo "$diff_full" | grep -cE '^\+.*(interface |type |: [A-Z][a-zA-Z]+)' 2>/dev/null || echo "0")
-    local config_changes=$(git -C "$worktree_path" diff "$BASE_BRANCH" --name-only 2>/dev/null | grep -cE '\.(json|yaml|yml|toml|ini|env)$|config' 2>/dev/null || echo "0")
-    local comments_added=$(echo "$diff_full" | grep -cE '^\+.*(/\*|\*/|//|#.*[a-zA-Z])' 2>/dev/null || echo "0")
-    local error_handling=$(echo "$diff_full" | grep -cE '^\+.*(try|catch|throw|Error|Exception|raise|rescue|if err|\.catch\(|\.error\()' 2>/dev/null || echo "0")
+    # Count deleted files (diff --git where new file is /dev/null)
+    local deleted_files=$(echo "$patch_content" | grep -c "^+++ /dev/null" 2>/dev/null || echo "0")
 
-    # Complexity estimation (simplified - count decision points in added lines)
-    local decision_points=$(echo "$diff_full" | grep -cE '^\+.*(if |else |for |while |switch |case |&&|\|\||try |catch )' 2>/dev/null || echo "0")
+    # Modified files = total - new - deleted
+    local modified_files=$((files_changed - new_files - deleted_files))
+    [ $modified_files -lt 0 ] && modified_files=0
 
-    # Estimate nesting depth (count leading whitespace patterns in added lines)
-    local max_indent=$(echo "$diff_full" | grep '^+' | sed 's/^+//' | awk '{
+    # Pattern detection on added lines only
+    local added_lines=$(echo "$patch_content" | grep "^+" | grep -v "^+++" || true)
+
+    # Test files detection (look for test/spec patterns in file names in diff headers)
+    local test_files=$(echo "$patch_content" | grep "^diff --git" | grep -cE '\.(test|spec)\.(js|ts|jsx|tsx|py|rb)|_test\.(go|py)|Test\.java' 2>/dev/null || echo "0")
+
+    # Type definitions in added lines
+    local type_defs=$(echo "$added_lines" | grep -cE '(interface |type |: [A-Z][a-zA-Z]+)' 2>/dev/null || echo "0")
+
+    # Config file changes
+    local config_changes=$(echo "$patch_content" | grep "^diff --git" | grep -cE '\.(json|yaml|yml|toml|ini|env)$|config' 2>/dev/null || echo "0")
+
+    # Comments added
+    local comments_added=$(echo "$added_lines" | grep -cE '(/\*|\*/|//|#.*[a-zA-Z])' 2>/dev/null || echo "0")
+
+    # Error handling patterns
+    local error_handling=$(echo "$added_lines" | grep -cE '(try|catch|throw|Error|Exception|raise|rescue|if err|\.catch\(|\.error\()' 2>/dev/null || echo "0")
+
+    # Complexity estimation - decision points in added lines
+    local decision_points=$(echo "$added_lines" | grep -cE '(if |else |for |while |switch |case |&&|\|\||try |catch )' 2>/dev/null || echo "0")
+
+    # Estimate nesting depth
+    local max_indent=$(echo "$added_lines" | sed 's/^+//' | awk '{
         match($0, /^[ \t]*/);
         indent = RLENGTH;
         if (indent > max) max = indent;
     } END {print int(max/2)}' 2>/dev/null || echo "0")
 
-    # Function/method count (approximate)
-    local func_count=$(echo "$diff_full" | grep -cE '^\+.*(function |def |func |fn |=> \{|->|public |private |protected ).*[\(\{]' 2>/dev/null || echo "0")
+    # Function/method count
+    local func_count=$(echo "$added_lines" | grep -cE '(function |def |func |fn |=> \{|->|public |private |protected ).*[\(\{]' 2>/dev/null || echo "0")
 
     # Calculate scores (0-100 scale)
     local size_score=50
@@ -140,8 +147,7 @@ analyze_session() {
     cat << EOF
 {
     "session_id": "$session_id",
-    "worktree_path": "$worktree_path",
-    "branch": "crown-jules/$RUN_ID/$session_id",
+    "patch_file": "$patch_file",
     "url": "https://jules.google.com/session/$session_id",
     "metrics": {
         "change": {
@@ -183,13 +189,13 @@ TEMP_DIR=$(mktemp -d)
 SESSION_DATA=()
 
 for ((i=0; i<SESSION_COUNT; i++)); do
-    worktree="${SESSION_DIRS[$i]}"
-    session_id=$(basename "$worktree" | sed 's/session-//')
+    patch_file="${PATCH_FILES[$i]}"
+    session_id=$(basename "$patch_file" .patch)
 
     echo "Analyzing session $session_id..."
 
     result_file="$TEMP_DIR/session_$i.json"
-    analyze_session "$worktree" > "$result_file"
+    analyze_patch "$patch_file" > "$result_file"
     SESSION_DATA+=("$result_file")
 done
 
@@ -219,7 +225,7 @@ echo "Generating reports..."
     # Create ranking data
     declare -a RANKINGS
     for ((i=0; i<SESSION_COUNT; i++)); do
-        session_id=$(basename "${SESSION_DIRS[$i]}" | sed 's/session-//')
+        session_id=$(basename "${PATCH_FILES[$i]}" .patch)
         # Extract overall score using grep/sed (jq-free)
         overall=$(grep '"overall":' "${SESSION_DATA[$i]}" | sed 's/.*: *\([0-9]*\).*/\1/')
         RANKINGS+=("$overall:$session_id")
@@ -292,8 +298,7 @@ echo "Generating reports..."
             if grep -q "\"session_id\": \"$session_id\"" "$data_file"; then
                 echo "### Rank #$rank: Session $session_id"
                 echo ""
-                echo "**Branch:** \`crown-jules/$RUN_ID/$session_id\`"
-                echo "**Worktree:** \`$WORKTREE_DIR/session-$session_id\`"
+                echo "**Patch file:** \`$CROWN_JULES_DIR/$session_id.patch\`"
                 echo "**Jules URL:** https://jules.google.com/session/$session_id"
                 echo ""
 
@@ -341,11 +346,9 @@ echo "Generating reports..."
 
         echo "**Session $top_session** with an overall score of **$top_score** is recommended."
         echo ""
-        echo "To review locally:"
+        echo "To apply locally:"
         echo "\`\`\`bash"
-        echo "cd $WORKTREE_DIR/session-$top_session"
-        echo "# or"
-        echo "git checkout crown-jules/$RUN_ID/$top_session"
+        echo "git apply .crown-jules/$RUN_ID/$top_session.patch"
         echo "\`\`\`"
         echo ""
         echo "To create a PR from Jules:"

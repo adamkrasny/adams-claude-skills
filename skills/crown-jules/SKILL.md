@@ -13,7 +13,6 @@ Orchestrate multiple Jules AI agents working in parallel on the same task, then 
 ## Important Notes
 
 - **Always use `npx -y @google/jules@latest`** to run Jules commands. This ensures the CLI is available without requiring global installation.
-- **Never use `cd <path> && git ...`** when running git commands on worktrees. Use `git -C <path> ...` instead. This avoids issues with shell hooks (like zoxide) that can break in subprocesses.
 
 ## Jules CLI Reference
 
@@ -47,17 +46,17 @@ The script polls every 30 seconds and displays a clean status table with URLs. I
 
 ### Evaluation Scripts
 
-These scripts handle the evaluation phase using git worktrees for parallel processing:
+These scripts handle the evaluation phase:
 
 ```bash
-# Create worktrees for all sessions (runs in parallel)
-~/.claude/skills/crown-jules/setup-worktrees.sh <run_id> <base_branch> <session_id1> <session_id2> ...
+# Generate patch files for all sessions
+~/.claude/skills/crown-jules/generate-patches.sh <run_id> <base_branch> <session_id1> <session_id2> ...
 
-# Analyze all worktrees and generate comparison reports
+# Analyze all patches and generate comparison reports
 ~/.claude/skills/crown-jules/compare-sessions.sh <run_id> [base_branch]
 
-# Clean up worktrees and optionally branches
-~/.claude/skills/crown-jules/cleanup-worktrees.sh <run_id> [true]  # true = also delete branches
+# Clean up patch files and reports
+~/.claude/skills/crown-jules/cleanup.sh <run_id>
 ```
 
 The `run_id` is a unique identifier for each Crown Jules workflow run. This allows multiple Crown Jules sessions to run in parallel on the same repository without conflicts.
@@ -92,8 +91,8 @@ This skill executes a 5-phase workflow:
 1. **Planning** - Collaborate with user to refine their idea into a clear plan
 2. **Dispatch** - Send the task to N parallel Jules agents
 3. **Polling** - Monitor progress until all agents complete
-4. **Evaluation** - Pull changes, create diffs, perform deep analysis, rank results
-5. **Cleanup** - Ask user about branch retention
+4. **Evaluation** - Generate patches, perform deep analysis, rank results
+5. **Cleanup** - Remove patch files and reports
 
 ## State Management
 
@@ -106,7 +105,7 @@ Use Claude's task system to track workflow state. Create a parent task for the w
 - `plan`: The high-level plan created in Phase 1
 - `prompt`: The enhanced prompt sent to Jules
 - `agentCount`: Number of parallel agents
-- `sessions`: Array of `{id, url, status, branch}` for each Jules session
+- `sessions`: Array of `{id, url, status}` for each Jules session
 
 When resuming, read the parent task metadata to determine current state and continue from where you left off.
 
@@ -262,8 +261,8 @@ When resuming, read the parent task metadata to determine current state and cont
        repo: "<owner/repo>",
        prompt: "<the enhanced prompt>",
        sessions: [
-         {id: "<id1>", url: "<url1>", status: "Started", branch: null},
-         {id: "<id2>", url: "<url2>", status: "Started", branch: null},
+         {id: "<id1>", url: "<url1>", status: "Started"},
+         {id: "<id2>", url: "<url2>", status: "Started"},
          ...
        ]
      }
@@ -331,11 +330,11 @@ Waiting 30s for next poll... (Ctrl+C to stop)
 
 ## Phase 4: Evaluation
 
-**Goal:** Create worktrees for parallel analysis, run automated comparison, and present results.
+**Goal:** Generate patch files for each implementation, run automated comparison, and present results.
 
 **Steps:**
 
-### 4a. Setup Worktrees
+### 4a. Generate Patches
 
 1. Verify clean working state:
    ```bash
@@ -345,24 +344,27 @@ Waiting 30s for next poll... (Ctrl+C to stop)
 
 2. Extract the `runId` and completed session IDs from workflow metadata.
 
-3. Run the worktree setup script:
+3. Run the patch generation script:
    ```bash
-   ~/.claude/skills/crown-jules/setup-worktrees.sh <run_id> main <session_id_1> <session_id_2> ...
+   ~/.claude/skills/crown-jules/generate-patches.sh <run_id> main <session_id_1> <session_id_2> ...
    ```
 
    The script will:
-   - Create `.crown-jules/<run_id>/worktrees/` directory in the repo root
-   - Process all sessions in parallel
-   - For each session: create branch `crown-jules/<run_id>/<session_id>` → create worktree → apply Jules changes → commit
+   - Create a single temporary worktree on branch `crown-jules/<run_id>`
+   - For each session sequentially:
+     - Apply Jules changes
+     - Generate patch file: `.crown-jules/<run_id>/<session_id>.patch`
+     - Reset worktree for next session
+   - Remove the worktree and branch when done
    - Report success/failure for each session
 
-4. Verify worktrees were created:
+4. Verify patches were created:
    ```bash
-   git worktree list
+   ls -la .crown-jules/<run_id>/*.patch
    ```
 
 5. **If the script fails or exits with an error:**
-   - Do NOT fall back to manual worktree creation
+   - Do NOT fall back to manual patch generation
    - STOP and inform the user of the error
    - Ask how they want to proceed
 
@@ -373,7 +375,7 @@ Waiting 30s for next poll... (Ctrl+C to stop)
    ~/.claude/skills/crown-jules/compare-sessions.sh <run_id> main
    ```
 
-   The script analyzes each implementation and collects metrics:
+   The script analyzes each patch file and collects metrics:
 
    | Category | Metrics |
    |----------|---------|
@@ -423,8 +425,7 @@ After the automated analysis, present results to the user:
    - Unique solutions worth noting
 
 5. **Next steps**:
-   - How to review locally: `cd .crown-jules/<run_id>/worktrees/session-<id>`
-   - How to view diff: `git diff main` (in worktree)
+   - How to apply locally: `git apply .crown-jules/<run_id>/<session_id>.patch`
    - Link to create PR from Jules interface
 
 Example output format:
@@ -456,7 +457,7 @@ Example output format:
 - Moderate complexity with good error handling
 - Clean, focused changes
 
-**To review:** `cd .crown-jules-worktrees/session-abc123`
+**To apply:** `git apply .crown-jules/<run_id>/abc123.patch`
 **To create PR:** https://jules.google.com/session/abc123
 ```
 
@@ -464,43 +465,34 @@ Example output format:
 
 ## Phase 5: Cleanup
 
-**Goal:** Clean up worktrees and branches based on user preference.
+**Goal:** Clean up patch files and reports.
 
 **IMPORTANT:** Do NOT offer to merge any implementation into main. The user will create a PR from the Jules web interface.
 
 **Steps:**
 
-1. Ask the user what they'd like to do:
-   - **Keep all**: Leave worktrees and branches for further inspection
-   - **Delete worktrees only**: Remove worktrees but keep branches
-   - **Delete all**: Remove worktrees and delete all `crown-jules/*` branches
+1. Ask the user if they'd like to clean up now or keep the files for later review.
 
-2. Execute their choice using the cleanup script with the run ID:
+2. If they want to clean up, execute the cleanup script:
    ```bash
-   # Keep branches (worktrees only)
-   ~/.claude/skills/crown-jules/cleanup-worktrees.sh <run_id>
-
-   # Delete everything (worktrees + branches)
-   ~/.claude/skills/crown-jules/cleanup-worktrees.sh <run_id> true
+   ~/.claude/skills/crown-jules/cleanup.sh <run_id>
    ```
 
    The script will:
-   - Remove all worktrees in `.crown-jules/<run_id>/worktrees/`
-   - Optionally delete all `crown-jules/<run_id>/*` branches
-   - Remove the entire `.crown-jules/<run_id>/` directory (including reports)
+   - Remove all patch files in `.crown-jules/<run_id>/`
+   - Remove reports (report.json, report.md)
+   - Remove the entire `.crown-jules/<run_id>/` directory
    - Clean up the parent `.crown-jules/` directory if empty
-   - Print summary of what was cleaned up
 
 3. Mark the workflow task as completed.
 
 4. Provide final summary:
    - Link to recommended Jules session (user will create PR from there)
-   - Reminder of which branches (if any) were kept locally
 
 5. **Do NOT:**
    - Offer to merge into main
    - Offer to create a PR
-   - Ask if the user wants to apply changes
+   - Offer to apply changes
 
    The workflow is complete. The user will handle merging via the Jules interface.
 
@@ -526,16 +518,15 @@ All Crown Jules files for a run are stored under `.crown-jules/<run_id>/`:
 ```
 <repo>/
 ├── .crown-jules/
-│   └── <run_id>/                    # Unique per workflow run
-│       ├── worktrees/               # Git worktrees
-│       │   ├── session-<id1>/       # Worktree with applied changes
-│       │   ├── session-<id2>/
-│       │   └── ...
-│       ├── report.json              # Machine-readable analysis
-│       └── report.md                # Human-readable report
+│   └── <run_id>/
+│       ├── <session_id_1>.patch    # Patch file for session 1
+│       ├── <session_id_2>.patch    # Patch file for session 2
+│       ├── ...
+│       ├── report.json             # Machine-readable analysis
+│       └── report.md               # Human-readable report
 ```
 
-This structure allows multiple Crown Jules workflows to run in parallel on the same repository without conflicts. Each run has its own isolated worktrees, branches (`crown-jules/<run_id>/<session_id>`), and reports.
+This structure allows multiple Crown Jules workflows to run in parallel on the same repository without conflicts. Each run has its own isolated patch files and reports.
 
 ---
 
@@ -544,7 +535,7 @@ This structure allows multiple Crown Jules workflows to run in parallel on the s
 - **Jules CLI authentication required**: Inform user to run `npx -y @google/jules@latest login` to authenticate
 - **No git repository**: Skill requires being run inside a git repository
 - **All agents failed**: Report failure, provide links to sessions for manual inspection
-- **Git conflicts on apply**: Mark session as failed, continue with others
+- **Patch application conflicts**: Mark session as failed, continue with others
 - **Network issues during polling**: Retry with backoff, inform user if persistent
 - **Session stuck in Awaiting User Feedback for 5+ poll cycles**: Notify user they may need to check the Jules web UI
 
