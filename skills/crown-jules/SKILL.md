@@ -1,10 +1,10 @@
 ---
-name: jules-compare
-description: "Orchestrate parallel Jules agents to implement a feature, then compare and rank results. Use when user says: 'compare jules implementations', 'jules compare', 'parallel jules', 'have multiple agents try this', 'let jules compete'."
+name: crown-jules
+description: "Orchestrate parallel Jules agents to implement a feature, then compare and rank results. Use when user says: 'crown jules', 'compare jules implementations', 'jules compare', 'parallel jules', 'have multiple agents try this', 'let jules compete'."
 argument-hint: "[--agents N] [idea or prompt]"
 ---
 
-# Jules Compare Skill
+# Crown Jules Skill
 
 Orchestrate multiple Jules AI agents working in parallel on the same task, then compare their implementations to find the best solution.
 
@@ -37,7 +37,7 @@ npx -y @google/jules@latest login
 This skill includes a polling script that handles waiting for sessions to complete:
 
 ```bash
-~/.claude/skills/jules-compare/poll-sessions.sh <session_id1> <session_id2> ...
+~/.claude/skills/crown-jules/poll-sessions.sh <session_id1> <session_id2> ...
 ```
 
 The script polls every 30 seconds and displays a clean status table with URLs. It exits when all sessions reach terminal state.
@@ -100,7 +100,7 @@ When resuming, read the parent task metadata to determine current state and cont
 **Steps:**
 
 1. Parse any arguments from the skill invocation:
-   - `--agents N` sets the number of parallel agents (default: 5)
+   - `--agents N` sets the number of parallel agents (default: 4)
    - Everything else is the initial idea/prompt
 
 2. If the user provided an idea, acknowledge it. If not, ask them to describe what they want to build.
@@ -127,7 +127,7 @@ When resuming, read the parent task metadata to determine current state and cont
 7. Create the workflow tracking task:
    ```
    TaskCreate:
-     subject: "Jules Compare: [brief description]"
+     subject: "Crown Jules: [brief description]"
      description: "Parallel Jules workflow for: [idea summary]"
      metadata: {
        phase: "planning",
@@ -239,7 +239,7 @@ When resuming, read the parent task metadata to determine current state and cont
 
 1. Run the polling script with all session IDs:
    ```bash
-   ~/.claude/skills/jules-compare/poll-sessions.sh <session_id_1> <session_id_2> <session_id_3> <session_id_4> <session_id_5>
+   ~/.claude/skills/crown-jules/poll-sessions.sh <session_id_1> <session_id_2> <session_id_3> <session_id_4>
    ```
 
    The script will:
@@ -270,7 +270,7 @@ When resuming, read the parent task metadata to determine current state and cont
 
 **Example output from the script:**
 ```
-Jules Compare - Polling Sessions (every 30s)
+Crown Jules - Polling Sessions (every 30s)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Session ID             Status                   URL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -278,7 +278,6 @@ Session ID             Status                   URL
 7829403212940903160    Completed ✓              https://jules.google.com/session/7829403212940903160
 18002240231784670042   Planning                 https://jules.google.com/session/18002240231784670042
 11394807168730841386   Awaiting Plan Approval   https://jules.google.com/session/11394807168730841386
-92837465019283746501   In Progress              https://jules.google.com/session/92837465019283746501
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Waiting 30s for next poll... (Ctrl+C to stop)
@@ -308,10 +307,10 @@ For each session with status "Completed":
    ```bash
    git checkout main
    git pull origin main
-   git checkout -b jules-compare/<session_id>
+   git checkout -b crown-jules/<session_id>
    ```
 
-   For example, if session ID is `15117933240154076744`, create branch `jules-compare/15117933240154076744`.
+   For example, if session ID is `15117933240154076744`, create branch `crown-jules/15117933240154076744`.
    Do NOT use generic names like `session-1` or `session-2`.
 
 3. Apply the Jules changes:
@@ -371,14 +370,14 @@ After all branches are created, perform a thorough analysis:
 Format the results clearly:
 
 ```
-# Jules Compare Results
+# Crown Jules Results
 
 ## Summary
 
 | Rank | Session ID           | Status    | Branch                              | Recommendation   |
 |------|----------------------|-----------|-------------------------------------|------------------|
-| 1    | 15117933240154076744 | Completed | jules-compare/15117933240154076744  | RECOMMENDED      |
-| 2    | 7829403212940903160  | Completed | jules-compare/7829403212940903160   | Good alternative |
+| 1    | 15117933240154076744 | Completed | crown-jules/15117933240154076744  | RECOMMENDED      |
+| 2    | 7829403212940903160  | Completed | crown-jules/7829403212940903160   | Good alternative |
 | 3    | 18002240231784670042 | Failed    | -                                   | Could not apply  |
 
 ## Recommended Implementation: Session 15117933240154076744
@@ -396,7 +395,7 @@ Format the results clearly:
 - [Notable implementation choices]
 
 [Link: https://jules.google.com/session/15117933240154076744]
-[Branch: jules-compare/15117933240154076744]
+[Branch: crown-jules/15117933240154076744]
 
 ## Alternative: Session 7829403212940903160
 
@@ -415,7 +414,7 @@ Format the results clearly:
 To use the recommended implementation, create a PR from the Jules interface:
 https://jules.google.com/session/15117933240154076744
 
-To review locally first: `git checkout jules-compare/15117933240154076744`
+To review locally first: `git checkout crown-jules/15117933240154076744`
 ```
 
 ---
@@ -430,12 +429,12 @@ To review locally first: `git checkout jules-compare/15117933240154076744`
 
 1. Ask the user what they'd like to do with the comparison branches:
    - **Keep all**: Leave branches for further inspection
-   - **Delete all**: Remove all `jules-compare/*` branches
+   - **Delete all**: Remove all `crown-jules/*` branches
    - **Keep recommended only**: Delete all except the top-ranked branch
 
 2. Execute their choice:
    ```bash
-   git branch -D jules-compare/<session_id>
+   git branch -D crown-jules/<session_id>
    ```
 
 3. Mark the workflow task as completed.
@@ -464,7 +463,7 @@ If the skill is invoked and an existing incomplete workflow task exists:
    - **evaluation**: Continue evaluation with stored session data
    - **cleanup**: Re-ask cleanup question
 
-Always check for existing `Jules Compare:*` tasks in progress before starting a new workflow.
+Always check for existing `Crown Jules:*` tasks in progress before starting a new workflow.
 
 ---
 
@@ -495,10 +494,10 @@ Always check for existing `Jules Compare:*` tasks in progress before starting a 
 ## Example Invocations
 
 ```
-/jules-compare Add a dark mode toggle to the settings page
+/crown-jules Add a dark mode toggle to the settings page
 
-/jules-compare --agents 6 Implement user authentication with JWT
+/crown-jules --agents 6 Implement user authentication with JWT
 
-/jules-compare
+/crown-jules
 (Then describe your idea when prompted)
 ```

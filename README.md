@@ -17,7 +17,7 @@ skills/
 
 | Skill | Description |
 |-------|-------------|
-| [jules-compare](skills/jules-compare/) | Orchestrate parallel Jules agents to implement a feature, then compare and rank results |
+| [crown-jules](skills/crown-jules/) | Orchestrate parallel Jules agents to implement a feature, then compare and rank results |
 
 ## Creating a New Skill
 
@@ -49,7 +49,7 @@ To use these skills with Claude Code, symlink or copy the skills directory:
 ln -s /path/to/adams-claude-skills/skills ~/.claude/skills
 
 # Or symlink individual skills
-ln -s /path/to/adams-claude-skills/skills/jules-compare ~/.claude/skills/jules-compare
+ln -s /path/to/adams-claude-skills/skills/crown-jules ~/.claude/skills/crown-jules
 ```
 
 ## Resources
