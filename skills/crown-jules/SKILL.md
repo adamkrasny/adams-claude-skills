@@ -196,6 +196,8 @@ When resuming, read the parent task metadata to determine current state and cont
 3. Build the enhanced prompt for Jules. The prompt should include:
 
    ```
+   [Short descriptive title - e.g., "Add dark mode toggle to settings page"]
+
    ## Task
    [Clear description of what to implement]
 
