@@ -100,19 +100,42 @@ print_status_table() {
 # Main polling loop
 all_done=false
 poll_count=0
+consecutive_failures=0
+MAX_CONSECUTIVE_FAILURES=10
 
 while [ "$all_done" = false ]; do
     poll_count=$((poll_count + 1))
 
-    # Get current status from jules (capture both stdout and stderr, but only use stdout)
-    output=$(jules remote list --session 2>/dev/null) || output=""
+    # Get current status from jules (capture both stdout and stderr)
+    error_output=$(mktemp)
+    output=$(npx -y @google/jules@latest remote list --session 2>"$error_output") || output=""
+    error_content=$(cat "$error_output")
+    rm -f "$error_output"
 
-    # If output is empty, try again
+    # If output is empty, show error and retry
     if [ -z "$output" ]; then
-        echo "Warning: Could not get session list from Jules CLI. Retrying..."
+        consecutive_failures=$((consecutive_failures + 1))
+        echo "Warning: Could not get session list from Jules CLI (attempt $consecutive_failures/$MAX_CONSECUTIVE_FAILURES)"
+        if [ -n "$error_content" ]; then
+            echo "  Error: $error_content"
+        fi
+
+        if [ $consecutive_failures -ge $MAX_CONSECUTIVE_FAILURES ]; then
+            echo ""
+            echo "ERROR: Failed to get session list after $MAX_CONSECUTIVE_FAILURES attempts."
+            echo "Possible causes:"
+            echo "  - Jules CLI not authenticated (run: npx -y @google/jules@latest login)"
+            echo "  - Network connectivity issues"
+            echo "  - Jules API is down"
+            exit 1
+        fi
+
         sleep 5
         continue
     fi
+
+    # Reset failure counter on success
+    consecutive_failures=0
 
     # Update statuses
     all_done=true

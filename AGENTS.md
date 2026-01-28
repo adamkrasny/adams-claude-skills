@@ -149,6 +149,23 @@ When including utility scripts:
 4. Document magic numbers and constants
 5. Use forward slashes in paths (Unix-style)
 
+## External CLI Tools
+
+When a skill depends on external CLI tools:
+
+1. **Use `npx -y` for npm packages** - Don't assume global installation
+   ```bash
+   # Good - guaranteed to work
+   npx -y @google/jules@latest new --repo owner/repo "prompt"
+
+   # Bad - may fail with "command not found"
+   jules new --repo owner/repo "prompt"
+   ```
+
+2. **Pin versions when stability matters** - Use `@latest` for always-current, specific versions for reproducibility
+
+3. **Document authentication requirements** - If the CLI needs auth, include the login command in the skill
+
 ## Testing Skills
 
 Before finalizing a skill:

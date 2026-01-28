@@ -12,24 +12,24 @@ Orchestrate multiple Jules AI agents working in parallel on the same task, then 
 
 ## Jules CLI Reference
 
-**IMPORTANT:** Only use these exact commands. The Jules CLI has a limited command set - do not guess or try other commands.
+**IMPORTANT:** Always use `npx -y @google/jules@latest` to run Jules commands. This ensures the CLI is available without requiring global installation.
 
 ### Available Commands
 
 ```bash
 # Create new session(s)
-jules new --repo <owner/repo> "<prompt>"
-jules new --repo <owner/repo> --parallel <N> "<prompt>"
+npx -y @google/jules@latest new --repo <owner/repo> "<prompt>"
+npx -y @google/jules@latest new --repo <owner/repo> --parallel <N> "<prompt>"
 
 # List sessions and check status
-jules remote list --session
+npx -y @google/jules@latest remote list --session
 
 # Pull changes from a session
-jules remote pull --session <session_id>           # Show diff only
-jules remote pull --session <session_id> --apply   # Apply changes locally
+npx -y @google/jules@latest remote pull --session <session_id>           # Show diff only
+npx -y @google/jules@latest remote pull --session <session_id> --apply   # Apply changes locally
 
 # Authentication
-jules login
+npx -y @google/jules@latest login
 ```
 
 ### Polling Script
@@ -43,14 +43,14 @@ This skill includes a polling script that handles waiting for sessions to comple
 The script polls every 30 seconds and displays a clean status table with URLs. It exits when all sessions reach terminal state.
 
 ### Commands That DO NOT Exist (do not try these)
-- `jules --version` - Does not exist
-- `jules auth status` - Does not exist
-- `jules status` - Does not exist
-- `jules check` - Does not exist
+- `npx -y @google/jules@latest --version` - Does not exist
+- `npx -y @google/jules@latest auth status` - Does not exist
+- `npx -y @google/jules@latest status` - Does not exist
+- `npx -y @google/jules@latest check` - Does not exist
 
 ### Session Status Values
 
-When parsing `jules remote list --session` output, these are the possible status values:
+When parsing `npx -y @google/jules@latest remote list --session` output, these are the possible status values:
 
 | Status | Meaning | Action |
 |--------|---------|--------|
@@ -185,13 +185,20 @@ When resuming, read the parent task metadata to determine current state and cont
 
 3. Execute the Jules command:
    ```bash
-   jules new --repo <owner/repo> --parallel <N> "<prompt>"
+   npx -y @google/jules@latest new --repo <owner/repo> --parallel <N> "<prompt>"
    ```
 
    **IMPORTANT:**
    - Do NOT run this command in the background. You must capture the output synchronously to get the session IDs.
    - Use a longer timeout (e.g., 2-3 minutes) as session creation can take time.
    - The command will block until all sessions are created.
+
+   **If parallel creation partially fails (server errors):**
+   - Do NOT fall back to creating sessions individually
+   - Do NOT retry with separate `npx -y @google/jules@latest new` commands
+   - Instead: proceed with however many sessions were successfully created
+   - Inform the user: "X of Y sessions created due to server issues. Proceeding with X agents."
+   - If zero sessions were created, wait 30 seconds and retry the parallel command once
 
 4. Parse the output to extract session IDs and URLs. Expected format:
    ```
@@ -236,7 +243,7 @@ When resuming, read the parent task metadata to determine current state and cont
    ```
 
    The script will:
-   - Poll `jules remote list --session` every 30 seconds
+   - Poll `npx -y @google/jules@latest remote list --session` every 30 seconds
    - Display a clean status table with Session ID, Status, and Jules Web URL
    - Automatically handle all status transitions (Planning → In Progress → Completed)
    - Exit when ALL sessions reach terminal state (Completed or Failed)
@@ -302,7 +309,7 @@ For each session with status "Completed":
 
 3. Apply the Jules changes:
    ```bash
-   jules remote pull --session <session_id> --apply
+   npx -y @google/jules@latest remote pull --session <session_id> --apply
    ```
 
 4. If apply fails (conflicts), mark this session as failed and continue with others.
@@ -456,7 +463,7 @@ Always check for existing `Jules Compare:*` tasks in progress before starting a 
 
 ## Error Handling
 
-- **Jules CLI not installed**: Inform user to install Jules CLI (`npm install -g @google/jules`) and run `jules login`
+- **Jules CLI authentication required**: Inform user to run `npx -y @google/jules@latest login` to authenticate
 - **No git repository**: Skill requires being run inside a git repository
 - **All agents failed**: Report failure, provide links to sessions for manual inspection
 - **Git conflicts on apply**: Mark session as failed, continue with others
@@ -465,14 +472,14 @@ Always check for existing `Jules Compare:*` tasks in progress before starting a 
 
 ## Troubleshooting
 
-**If `jules new` seems to hang:**
+**If `npx -y @google/jules@latest new` seems to hang:**
 - Do NOT cancel and retry immediately
 - The command can take 1-2 minutes to create parallel sessions
 - Use a timeout of at least 3 minutes
-- Check if jules is authenticated: run `jules login` if needed
+- Check if Jules is authenticated: run `npx -y @google/jules@latest login` if needed
 
 **If session IDs weren't captured:**
-- Run `jules remote list --session` to find recent sessions
+- Run `npx -y @google/jules@latest remote list --session` to find recent sessions
 - Look for sessions matching your task description
 - Sessions are listed with most recent first
 
