@@ -171,13 +171,20 @@ When resuming, read the parent task metadata to determine current state and cont
 
 1. Ensure `.crown-jules` is in `.gitignore`:
    ```bash
-   # Check if .gitignore exists and contains .crown-jules
-   grep -q "^\.crown-jules/?$" .gitignore 2>/dev/null
+   # Check if .gitignore exists and contains .crown-jules (with or without trailing slash)
+   grep -qE "^\.crown-jules/?$" .gitignore 2>/dev/null
    ```
 
+   This pattern matches both `.crown-jules` and `.crown-jules/` at the start of a line.
+
    If the pattern is not found (grep returns non-zero):
-   - If `.gitignore` exists, append `.crown-jules/` to it
-   - If `.gitignore` doesn't exist, create it with `.crown-jules/` as the first entry
+   - If `.gitignore` doesn't exist, create it with `.crown-jules/` as the only entry
+   - If `.gitignore` exists, append `.crown-jules/` **on a new line**:
+     ```bash
+     # Ensure we add on a new line (handles files that don't end with newline)
+     [[ -s .gitignore && $(tail -c1 .gitignore) != "" ]] && echo "" >> .gitignore
+     echo ".crown-jules/" >> .gitignore
+     ```
    - Inform the user: "Added `.crown-jules/` to `.gitignore` to prevent workflow files from being committed."
 
 2. Auto-detect the repository:
