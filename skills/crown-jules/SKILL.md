@@ -42,6 +42,23 @@ This skill includes a polling script that handles waiting for sessions to comple
 
 The script polls every 30 seconds and displays a clean status table with URLs. It exits when all sessions reach terminal state.
 
+### Evaluation Scripts
+
+These scripts handle the evaluation phase using git worktrees for parallel processing:
+
+```bash
+# Create worktrees for all sessions (runs in parallel)
+~/.claude/skills/crown-jules/setup-worktrees.sh <run_id> <base_branch> <session_id1> <session_id2> ...
+
+# Analyze all worktrees and generate comparison reports
+~/.claude/skills/crown-jules/compare-sessions.sh <run_id> [base_branch]
+
+# Clean up worktrees and optionally branches
+~/.claude/skills/crown-jules/cleanup-worktrees.sh <run_id> [true]  # true = also delete branches
+```
+
+The `run_id` is a unique identifier for each Crown Jules workflow run. This allows multiple Crown Jules sessions to run in parallel on the same repository without conflicts.
+
 ### Commands That DO NOT Exist (do not try these)
 - `npx -y @google/jules@latest --version` - Does not exist
 - `npx -y @google/jules@latest auth status` - Does not exist
@@ -81,6 +98,7 @@ Use Claude's task system to track workflow state. Create a parent task for the w
 
 **Required metadata to track:**
 - `phase`: Current workflow phase
+- `runId`: Unique identifier for this workflow run (use a short random string, e.g., first 8 chars of a UUID)
 - `repo`: GitHub repository (owner/repo format)
 - `plan`: The high-level plan created in Phase 1
 - `prompt`: The enhanced prompt sent to Jules
@@ -124,13 +142,16 @@ When resuming, read the parent task metadata to determine current state and cont
 
 6. Present the plan to the user and get their approval before proceeding.
 
-7. Create the workflow tracking task:
+7. Generate a unique run ID (first 8 characters of a UUID or similar short random string).
+
+8. Create the workflow tracking task:
    ```
    TaskCreate:
      subject: "Crown Jules: [brief description]"
      description: "Parallel Jules workflow for: [idea summary]"
      metadata: {
        phase: "planning",
+       runId: "[unique run ID]",
        plan: "[the approved plan]",
        agentCount: [N],
        sessions: []
@@ -287,161 +308,171 @@ Waiting 30s for next poll... (Ctrl+C to stop)
 
 ## Phase 4: Evaluation
 
-**Goal:** Pull changes from each successful agent, create comparison branches, and perform deep analysis.
+**Goal:** Create worktrees for parallel analysis, run automated comparison, and present results.
 
 **Steps:**
 
-### 4a. Prepare branches for each successful session
+### 4a. Setup Worktrees
 
-**NOTE:** Do NOT run lint, typecheck, or verification commands. Jules already verified the code before completing. Just apply the changes and analyze the diffs.
-
-For each session with status "Completed":
-
-1. Ensure we're on a clean working tree:
+1. Verify clean working state:
    ```bash
    git status --porcelain
    ```
    If there are uncommitted changes, warn the user and ask how to proceed.
 
-2. Checkout main and create comparison branch using the **actual numeric session ID**:
+2. Extract the `runId` and completed session IDs from workflow metadata.
+
+3. Run the worktree setup script:
    ```bash
-   git checkout main
-   git pull origin main
-   git checkout -b crown-jules/<session_id>
+   ~/.claude/skills/crown-jules/setup-worktrees.sh <run_id> main <session_id_1> <session_id_2> ...
    ```
 
-   For example, if session ID is `15117933240154076744`, create branch `crown-jules/15117933240154076744`.
-   Do NOT use generic names like `session-1` or `session-2`.
+   The script will:
+   - Create `.crown-jules/<run_id>/worktrees/` directory in the repo root
+   - Process all sessions in parallel
+   - For each session: create branch `crown-jules/<run_id>/<session_id>` → create worktree → apply Jules changes → commit
+   - Report success/failure for each session
 
-3. Apply the Jules changes:
+4. Verify worktrees were created:
    ```bash
-   npx -y @google/jules@latest remote pull --session <session_id> --apply
+   git worktree list
    ```
 
-4. If apply fails (conflicts), mark this session as failed and continue with others.
+5. **If the script fails or exits with an error:**
+   - Do NOT fall back to manual worktree creation
+   - STOP and inform the user of the error
+   - Ask how they want to proceed
 
-5. Capture the diff:
-   ```bash
-   git diff main --stat
-   git diff main
-   ```
-   Store both the summary stats and full diff for analysis.
+### 4b. Run Automated Analysis
 
-6. Commit the changes on the branch:
+1. Execute the comparison script with the run ID:
    ```bash
-   git add -A
-   git commit -m "Jules implementation from session <session_id>"
+   ~/.claude/skills/crown-jules/compare-sessions.sh <run_id> main
    ```
 
-7. Update task metadata with branch name for this session.
+   The script analyzes each implementation and collects metrics:
 
-8. Return to main before processing next session:
+   | Category | Metrics |
+   |----------|---------|
+   | **Change** | Lines +/-, files changed, hunks, new/modified/deleted files |
+   | **Complexity** | Decision points, max nesting depth, function count |
+   | **Patterns** | Test files, type definitions, config changes, comments, error handling |
+
+   It calculates scores (0-100) for each implementation:
+
+   | Component | Weight | Criteria |
+   |-----------|--------|----------|
+   | Size | 25% | Penalize too small (<20 lines) or too large (>1000 lines) |
+   | Complexity | 20% | Reward moderate decision points (1-50) |
+   | Testing | 25% | Bonus for test files detected |
+   | Documentation | 15% | Bonus for comments added |
+   | Error handling | 15% | Bonus for try/catch, validation |
+
+2. The script generates two reports in `.crown-jules/<run_id>/`:
+   - `report.json` - Machine-readable with full metrics and rankings
+   - `report.md` - Human-readable summary
+
+3. Read the generated reports:
    ```bash
-   git checkout main
+   cat .crown-jules/<run_id>/report.json  # For structured data
+   cat .crown-jules/<run_id>/report.md    # For readable summary
    ```
 
-### 4b. Deep analysis and comparison
+### 4c. Present Results
 
-After all branches are created, perform a thorough analysis:
+After the automated analysis, present results to the user:
 
-1. For EACH implementation, analyze:
-   - **Correctness**: Does it meet the success criteria from the plan?
-   - **Completeness**: Are all requirements addressed?
-   - **Code quality**: Is it well-structured, readable, maintainable?
-   - **Consistency**: Does it follow existing codebase patterns?
-   - **Edge cases**: Are error conditions and edge cases handled?
-   - **Testing**: Were tests added/updated appropriately?
-   - **Documentation**: Are changes documented if needed?
+1. **Summary table** with rankings and scores from the report
 
-2. Compare implementations against each other:
-   - What approaches did different agents take?
-   - Which made better architectural decisions?
-   - Which has fewer potential bugs or issues?
-   - Which is more maintainable long-term?
+2. **Recommended implementation** with justification:
+   - Why it scored highest
+   - Key strengths from metrics
+   - Any concerns or tradeoffs
 
-3. Create a detailed comparison document with:
-   - Summary table of all implementations
-   - Detailed pros/cons for each
-   - Code-level observations (specific lines, patterns, issues)
-   - Clear recommendation with justification
+3. **Detailed breakdown** of top 2-3 implementations:
+   - Score breakdown by category
+   - Change summary (lines, files)
+   - Notable patterns detected
 
-### 4c. Present results to user
+4. **Cross-implementation insights**:
+   - How approaches differed
+   - Common patterns across implementations
+   - Unique solutions worth noting
 
-Format the results clearly:
+5. **Next steps**:
+   - How to review locally: `cd .crown-jules/<run_id>/worktrees/session-<id>`
+   - How to view diff: `git diff main` (in worktree)
+   - Link to create PR from Jules interface
 
+Example output format:
 ```
 # Crown Jules Results
 
-## Summary
+## Rankings
 
-| Rank | Session ID           | Status    | Branch                              | Recommendation   |
-|------|----------------------|-----------|-------------------------------------|------------------|
-| 1    | 15117933240154076744 | Completed | crown-jules/15117933240154076744  | RECOMMENDED      |
-| 2    | 7829403212940903160  | Completed | crown-jules/7829403212940903160   | Good alternative |
-| 3    | 18002240231784670042 | Failed    | -                                   | Could not apply  |
+| Rank | Session | Score | Lines +/- | Files | Tests |
+|------|---------|-------|-----------|-------|-------|
+| 🥇 1 | [abc123](url) | **78** | +245/-12 | 5 | 2 |
+| 🥈 2 | [def456](url) | **65** | +189/-8 | 4 | 1 |
+| 🥉 3 | [ghi789](url) | **52** | +312/-45 | 7 | 0 |
 
-## Recommended Implementation: Session 15117933240154076744
+## Recommended: Session abc123
+
+**Overall Score: 78**
+
+| Metric | Score |
+|--------|-------|
+| Size | 72 |
+| Complexity | 68 |
+| Testing | 100 |
+| Documentation | 60 |
+| Error Handling | 70 |
 
 **Why this is the best choice:**
-[Detailed justification]
+- Highest testing score (added 2 test files)
+- Moderate complexity with good error handling
+- Clean, focused changes
 
-**Pros:**
-- [List of strengths]
-
-**Cons:**
-- [List of weaknesses or concerns]
-
-**Key code decisions:**
-- [Notable implementation choices]
-
-[Link: https://jules.google.com/session/15117933240154076744]
-[Branch: crown-jules/15117933240154076744]
-
-## Alternative: Session 7829403212940903160
-
-[Similar detailed analysis]
-
-## Failed Sessions
-
-### Session 18002240231784670042
-**Failure reason:** [explanation]
-[Link: https://jules.google.com/session/18002240231784670042]
-
----
-
-## Next Steps
-
-To use the recommended implementation, create a PR from the Jules interface:
-https://jules.google.com/session/15117933240154076744
-
-To review locally first: `git checkout crown-jules/15117933240154076744`
+**To review:** `cd .crown-jules-worktrees/session-abc123`
+**To create PR:** https://jules.google.com/session/abc123
 ```
 
 ---
 
 ## Phase 5: Cleanup
 
-**Goal:** Clean up comparison branches based on user preference.
+**Goal:** Clean up worktrees and branches based on user preference.
 
-**IMPORTANT:** Do NOT offer to merge any implementation into main. The user will create a PR from the Jules web interface. Your job ends after cleanup.
+**IMPORTANT:** Do NOT offer to merge any implementation into main. The user will create a PR from the Jules web interface.
 
 **Steps:**
 
-1. Ask the user what they'd like to do with the comparison branches:
-   - **Keep all**: Leave branches for further inspection
-   - **Delete all**: Remove all `crown-jules/*` branches
-   - **Keep recommended only**: Delete all except the top-ranked branch
+1. Ask the user what they'd like to do:
+   - **Keep all**: Leave worktrees and branches for further inspection
+   - **Delete worktrees only**: Remove worktrees but keep branches
+   - **Delete all**: Remove worktrees and delete all `crown-jules/*` branches
 
-2. Execute their choice:
+2. Execute their choice using the cleanup script with the run ID:
    ```bash
-   git branch -D crown-jules/<session_id>
+   # Keep branches (worktrees only)
+   ~/.claude/skills/crown-jules/cleanup-worktrees.sh <run_id>
+
+   # Delete everything (worktrees + branches)
+   ~/.claude/skills/crown-jules/cleanup-worktrees.sh <run_id> true
    ```
+
+   The script will:
+   - Remove all worktrees in `.crown-jules/<run_id>/worktrees/`
+   - Optionally delete all `crown-jules/<run_id>/*` branches
+   - Remove the entire `.crown-jules/<run_id>/` directory (including reports)
+   - Clean up the parent `.crown-jules/` directory if empty
+   - Print summary of what was cleaned up
 
 3. Mark the workflow task as completed.
 
 4. Provide final summary:
    - Link to recommended Jules session (user will create PR from there)
-   - Reminder of which branch (if any) was kept locally
+   - Reminder of which branches (if any) were kept locally
 
 5. **Do NOT:**
    - Offer to merge into main
@@ -456,14 +487,32 @@ To review locally first: `git checkout crown-jules/15117933240154076744`
 
 If the skill is invoked and an existing incomplete workflow task exists:
 
-1. Read the task metadata to determine current phase
-2. Resume from that phase:
+1. Read the task metadata to determine current phase and run ID
+2. Resume from that phase using the stored run ID:
    - **planning**: Continue the planning conversation
    - **polling**: Resume status polling with stored session IDs
-   - **evaluation**: Continue evaluation with stored session data
+   - **evaluation**: Continue evaluation with stored session data and run ID
    - **cleanup**: Re-ask cleanup question
 
 Always check for existing `Crown Jules:*` tasks in progress before starting a new workflow.
+
+## Directory Structure
+
+All Crown Jules files for a run are stored under `.crown-jules/<run_id>/`:
+
+```
+<repo>/
+├── .crown-jules/
+│   └── <run_id>/                    # Unique per workflow run
+│       ├── worktrees/               # Git worktrees
+│       │   ├── session-<id1>/       # Worktree with applied changes
+│       │   ├── session-<id2>/
+│       │   └── ...
+│       ├── report.json              # Machine-readable analysis
+│       └── report.md                # Human-readable report
+```
+
+This structure allows multiple Crown Jules workflows to run in parallel on the same repository without conflicts. Each run has its own isolated worktrees, branches (`crown-jules/<run_id>/<session_id>`), and reports.
 
 ---
 
