@@ -48,65 +48,64 @@ echo "Run ID: $RUN_ID"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
+# Helper to ensure clean integer values from grep -c
+clean_count() {
+    local val
+    val=$(cat 2>/dev/null | head -1 | tr -cd '0-9')
+    echo "${val:-0}"
+}
+
 # Function to analyze a patch file
 analyze_patch() {
     local patch_file="$1"
     local session_id=$(basename "$patch_file" .patch)
 
-    # Read patch content
-    local patch_content=$(cat "$patch_file")
-
-    # Parse numstat-like info from the patch
-    # Count files by looking for diff --git lines
-    local files_changed=$(echo "$patch_content" | grep -c "^diff --git" 2>/dev/null || echo "0")
-
-    # Count hunks
-    local hunks=$(echo "$patch_content" | grep -c "^@@" 2>/dev/null || echo "0")
-
-    # Count added/removed lines (lines starting with + or - but not ++ or --)
-    local lines_added=$(echo "$patch_content" | grep -c "^+[^+]" 2>/dev/null || echo "0")
-    local lines_removed=$(echo "$patch_content" | grep -c "^-[^-]" 2>/dev/null || echo "0")
-
-    # Count new files (diff --git where old file is /dev/null)
-    local new_files=$(echo "$patch_content" | grep -c "^--- /dev/null" 2>/dev/null || echo "0")
-
-    # Count deleted files (diff --git where new file is /dev/null)
-    local deleted_files=$(echo "$patch_content" | grep -c "^+++ /dev/null" 2>/dev/null || echo "0")
+    # Count patterns directly from file (more reliable than loading into variable)
+    local files_changed=$(grep -c "^diff --git" "$patch_file" 2>/dev/null | clean_count)
+    local hunks=$(grep -c "^@@" "$patch_file" 2>/dev/null | clean_count)
+    local lines_added=$(grep -c "^+[^+]" "$patch_file" 2>/dev/null | clean_count)
+    local lines_removed=$(grep -c "^-[^-]" "$patch_file" 2>/dev/null | clean_count)
+    local new_files=$(grep -c "^--- /dev/null" "$patch_file" 2>/dev/null | clean_count)
+    local deleted_files=$(grep -c "^+++ /dev/null" "$patch_file" 2>/dev/null | clean_count)
 
     # Modified files = total - new - deleted
     local modified_files=$((files_changed - new_files - deleted_files))
     [ $modified_files -lt 0 ] && modified_files=0
 
-    # Pattern detection on added lines only
-    local added_lines=$(echo "$patch_content" | grep "^+" | grep -v "^+++" || true)
+    # Create temp file for added lines (more reliable than variables for large patches)
+    local added_lines_file=$(mktemp)
+    grep "^+" "$patch_file" 2>/dev/null | grep -v "^+++" > "$added_lines_file" || true
 
     # Test files detection (look for test/spec patterns in file names in diff headers)
-    local test_files=$(echo "$patch_content" | grep "^diff --git" | grep -cE '\.(test|spec)\.(js|ts|jsx|tsx|py|rb)|_test\.(go|py)|Test\.java' 2>/dev/null || echo "0")
+    local test_files=$(grep "^diff --git" "$patch_file" 2>/dev/null | grep -cE '\.(test|spec)\.(js|ts|jsx|tsx|py|rb)|_test\.(go|py)|Test\.java' | clean_count)
 
     # Type definitions in added lines
-    local type_defs=$(echo "$added_lines" | grep -cE '(interface |type |: [A-Z][a-zA-Z]+)' 2>/dev/null || echo "0")
+    local type_defs=$(grep -cE '(interface |type |: [A-Z][a-zA-Z]+)' "$added_lines_file" 2>/dev/null | clean_count)
 
     # Config file changes
-    local config_changes=$(echo "$patch_content" | grep "^diff --git" | grep -cE '\.(json|yaml|yml|toml|ini|env)$|config' 2>/dev/null || echo "0")
+    local config_changes=$(grep "^diff --git" "$patch_file" 2>/dev/null | grep -cE '\.(json|yaml|yml|toml|ini|env)$|config' | clean_count)
 
     # Comments added
-    local comments_added=$(echo "$added_lines" | grep -cE '(/\*|\*/|//|#.*[a-zA-Z])' 2>/dev/null || echo "0")
+    local comments_added=$(grep -cE '(/\*|\*/|//|#.*[a-zA-Z])' "$added_lines_file" 2>/dev/null | clean_count)
 
     # Error handling patterns
-    local error_handling=$(echo "$added_lines" | grep -cE '(try|catch|throw|Error|Exception|raise|rescue|if err|\.catch\(|\.error\()' 2>/dev/null || echo "0")
+    local error_handling=$(grep -cE '(try|catch|throw|Error|Exception|raise|rescue|if err|\.catch\(|\.error\()' "$added_lines_file" 2>/dev/null | clean_count)
 
     # Complexity estimation - decision points in added lines
-    local decision_points=$(echo "$added_lines" | grep -cE '(if |else |for |while |switch |case |&&|\|\||try |catch )' 2>/dev/null || echo "0")
+    local decision_points=$(grep -cE '(if |else |for |while |switch |case |&&|\|\||try |catch )' "$added_lines_file" 2>/dev/null | clean_count)
 
     # Estimate nesting depth
-    local max_indent=$(echo "$added_lines" | sed 's/^+//' | awk '{
+    local max_indent=$(sed 's/^+//' "$added_lines_file" 2>/dev/null | awk '{
         match($0, /^[ \t]*/);
         indent = RLENGTH;
         if (indent > max) max = indent;
-    } END {print int(max/2)}' 2>/dev/null || echo "0")
+    } END {print int(max/2)}' | clean_count)
 
     # Function/method count
-    local func_count=$(echo "$added_lines" | grep -cE '(function |def |func |fn |=> \{|->|public |private |protected ).*[\(\{]' 2>/dev/null || echo "0")
+    local func_count=$(grep -cE '(function |def |func |fn |=> \{|->|public |private |protected ).*[\(\{]' "$added_lines_file" 2>/dev/null | clean_count)
+
+    # Cleanup temp file
+    rm -f "$added_lines_file"
 
     # Calculate scores (0-100 scale)
     local size_score=50
@@ -213,8 +212,12 @@ echo "Generating reports..."
 
     for ((i=0; i<SESSION_COUNT; i++)); do
         if [ $i -gt 0 ]; then echo '    ,'; fi
-        # Indent the session JSON
-        sed 's/^/    /' "${SESSION_DATA[$i]}"
+        # Indent the session JSON (with guard for missing files)
+        if [ -f "${SESSION_DATA[$i]}" ]; then
+            sed 's/^/    /' "${SESSION_DATA[$i]}"
+        else
+            echo '    {"error": "Session data file not found"}'
+        fi
     done
 
     echo '  ],'
@@ -226,8 +229,13 @@ echo "Generating reports..."
     declare -a RANKINGS
     for ((i=0; i<SESSION_COUNT; i++)); do
         session_id=$(basename "${PATCH_FILES[$i]}" .patch)
-        # Extract overall score using grep/sed (jq-free)
-        overall=$(grep '"overall":' "${SESSION_DATA[$i]}" | sed 's/.*: *\([0-9]*\).*/\1/')
+        # Extract overall score using grep/sed (jq-free) with guard
+        if [ -f "${SESSION_DATA[$i]}" ]; then
+            overall=$(grep '"overall":' "${SESSION_DATA[$i]}" 2>/dev/null | head -1 | sed 's/.*: *\([0-9]*\).*/\1/')
+            overall="${overall:-0}"
+        else
+            overall="0"
+        fi
         RANKINGS+=("$overall:$session_id")
     done
 
