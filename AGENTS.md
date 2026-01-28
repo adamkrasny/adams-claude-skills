@@ -148,6 +148,7 @@ When including utility scripts:
 3. Handle errors explicitly - don't punt to Claude
 4. Document magic numbers and constants
 5. Use forward slashes in paths (Unix-style)
+6. **Include "no workaround" instructions** - Always add explicit guidance that if a script fails, the agent should NOT fall back to manual implementation. Instead, it should stop, inform the user of the error, and ask how to proceed. Without this, agents will often try to be "helpful" by reimplementing script logic inline.
 
 ## External CLI Tools
 

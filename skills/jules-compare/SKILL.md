@@ -259,7 +259,14 @@ When resuming, read the parent task metadata to determine current state and cont
    - Ask the user about plan approval (it's automatic)
    - Display separate status tables between polls
 
-4. Once the script completes, read the final summary and proceed to evaluation phase.
+4. **If the polling script fails or exits with an error:**
+   - Do NOT fall back to manual polling
+   - Do NOT try to implement polling logic yourself
+   - STOP and inform the user of the error
+   - Ask the user how they want to proceed
+   - Provide the session URLs so they can check status manually if needed
+
+5. Once the script completes successfully, read the final summary and proceed to evaluation phase.
 
 **Example output from the script:**
 ```
