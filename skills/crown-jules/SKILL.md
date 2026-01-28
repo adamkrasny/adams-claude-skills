@@ -166,13 +166,24 @@ When resuming, read the parent task metadata to determine current state and cont
 
 **Steps:**
 
-1. Auto-detect the repository:
+1. Ensure `.crown-jules` is in `.gitignore`:
+   ```bash
+   # Check if .gitignore exists and contains .crown-jules
+   grep -q "^\.crown-jules/?$" .gitignore 2>/dev/null
+   ```
+
+   If the pattern is not found (grep returns non-zero):
+   - If `.gitignore` exists, append `.crown-jules/` to it
+   - If `.gitignore` doesn't exist, create it with `.crown-jules/` as the first entry
+   - Inform the user: "Added `.crown-jules/` to `.gitignore` to prevent workflow files from being committed."
+
+2. Auto-detect the repository:
    ```bash
    git remote get-url origin
    ```
    Parse the output to extract `owner/repo` format (handle both HTTPS and SSH URLs).
 
-2. Build the enhanced prompt for Jules. The prompt should include:
+3. Build the enhanced prompt for Jules. The prompt should include:
 
    ```
    ## Task
@@ -204,7 +215,7 @@ When resuming, read the parent task metadata to determine current state and cont
    4. Do NOT submit code that fails verification
    ```
 
-3. Execute the Jules command:
+4. Execute the Jules command:
    ```bash
    npx -y @google/jules@latest new --repo <owner/repo> --parallel <N> "<prompt>"
    ```
@@ -221,7 +232,7 @@ When resuming, read the parent task metadata to determine current state and cont
    - Inform the user: "X of Y sessions created due to server issues. Proceeding with X agents."
    - If zero sessions were created, wait 30 seconds and retry the parallel command once
 
-4. Parse the output to extract session IDs and URLs. Expected format:
+5. Parse the output to extract session IDs and URLs. Expected format:
    ```
    N parallel sessions created successfully:
    Task: <prompt>
@@ -231,7 +242,7 @@ When resuming, read the parent task metadata to determine current state and cont
      URL: https://jules.google.com/session/<session_id>
    ```
 
-5. Update the workflow task with session information:
+6. Update the workflow task with session information:
    ```
    TaskUpdate:
      metadata: {
@@ -246,7 +257,7 @@ When resuming, read the parent task metadata to determine current state and cont
      }
    ```
 
-6. Inform the user that agents have been dispatched and provide links to all sessions.
+7. Inform the user that agents have been dispatched and provide links to all sessions.
 
 ---
 
