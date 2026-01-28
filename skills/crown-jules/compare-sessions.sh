@@ -64,12 +64,11 @@ analyze_session() {
     local worktree_path="$1"
     local session_id=$(basename "$worktree_path" | sed 's/session-//')
 
-    cd "$worktree_path"
-
+    # Use git -C instead of cd to avoid issues with shell hooks (e.g., zoxide)
     # Get diff against base branch
-    local diff_stat=$(git diff "$BASE_BRANCH" --stat 2>/dev/null || echo "")
-    local diff_full=$(git diff "$BASE_BRANCH" 2>/dev/null || echo "")
-    local diff_numstat=$(git diff "$BASE_BRANCH" --numstat 2>/dev/null || echo "")
+    local diff_stat=$(git -C "$worktree_path" diff "$BASE_BRANCH" --stat 2>/dev/null || echo "")
+    local diff_full=$(git -C "$worktree_path" diff "$BASE_BRANCH" 2>/dev/null || echo "")
+    local diff_numstat=$(git -C "$worktree_path" diff "$BASE_BRANCH" --numstat 2>/dev/null || echo "")
 
     # Change metrics
     local lines_added=$(echo "$diff_numstat" | awk '{sum += $1} END {print sum+0}')
@@ -78,14 +77,14 @@ analyze_session() {
     local hunks=$(echo "$diff_full" | grep -c "^@@" 2>/dev/null || echo "0")
 
     # File type analysis
-    local new_files=$(git diff "$BASE_BRANCH" --diff-filter=A --name-only 2>/dev/null | wc -l | tr -d ' ')
-    local modified_files=$(git diff "$BASE_BRANCH" --diff-filter=M --name-only 2>/dev/null | wc -l | tr -d ' ')
-    local deleted_files=$(git diff "$BASE_BRANCH" --diff-filter=D --name-only 2>/dev/null | wc -l | tr -d ' ')
+    local new_files=$(git -C "$worktree_path" diff "$BASE_BRANCH" --diff-filter=A --name-only 2>/dev/null | wc -l | tr -d ' ')
+    local modified_files=$(git -C "$worktree_path" diff "$BASE_BRANCH" --diff-filter=M --name-only 2>/dev/null | wc -l | tr -d ' ')
+    local deleted_files=$(git -C "$worktree_path" diff "$BASE_BRANCH" --diff-filter=D --name-only 2>/dev/null | wc -l | tr -d ' ')
 
     # Pattern detection
-    local test_files=$(git diff "$BASE_BRANCH" --name-only 2>/dev/null | grep -cE '\.(test|spec)\.(js|ts|jsx|tsx|py|rb)$|_test\.(go|py)$|Test\.java$' 2>/dev/null || echo "0")
+    local test_files=$(git -C "$worktree_path" diff "$BASE_BRANCH" --name-only 2>/dev/null | grep -cE '\.(test|spec)\.(js|ts|jsx|tsx|py|rb)$|_test\.(go|py)$|Test\.java$' 2>/dev/null || echo "0")
     local type_defs=$(echo "$diff_full" | grep -cE '^\+.*(interface |type |: [A-Z][a-zA-Z]+)' 2>/dev/null || echo "0")
-    local config_changes=$(git diff "$BASE_BRANCH" --name-only 2>/dev/null | grep -cE '\.(json|yaml|yml|toml|ini|env)$|config' 2>/dev/null || echo "0")
+    local config_changes=$(git -C "$worktree_path" diff "$BASE_BRANCH" --name-only 2>/dev/null | grep -cE '\.(json|yaml|yml|toml|ini|env)$|config' 2>/dev/null || echo "0")
     local comments_added=$(echo "$diff_full" | grep -cE '^\+.*(/\*|\*/|//|#.*[a-zA-Z])' 2>/dev/null || echo "0")
     local error_handling=$(echo "$diff_full" | grep -cE '^\+.*(try|catch|throw|Error|Exception|raise|rescue|if err|\.catch\(|\.error\()' 2>/dev/null || echo "0")
 
@@ -177,8 +176,6 @@ analyze_session() {
     }
 }
 EOF
-
-    cd "$REPO_ROOT"
 }
 
 # Collect all session data

@@ -10,9 +10,12 @@ Orchestrate multiple Jules AI agents working in parallel on the same task, then 
 
 ---
 
-## Jules CLI Reference
+## Important Notes
 
-**IMPORTANT:** Always use `npx -y @google/jules@latest` to run Jules commands. This ensures the CLI is available without requiring global installation.
+- **Always use `npx -y @google/jules@latest`** to run Jules commands. This ensures the CLI is available without requiring global installation.
+- **Never use `cd <path> && git ...`** when running git commands on worktrees. Use `git -C <path> ...` instead. This avoids issues with shell hooks (like zoxide) that can break in subprocesses.
+
+## Jules CLI Reference
 
 ### Available Commands
 

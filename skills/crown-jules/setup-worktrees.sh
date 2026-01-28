@@ -87,27 +87,28 @@ setup_worktree() {
     fi
 
     # Apply Jules changes in the worktree
-    cd "$worktree_path"
+    # Use 'builtin cd' to bypass shell hooks like zoxide that can break in subprocesses
+    builtin cd "$worktree_path"
 
     # Pull changes from Jules session
     if ! npx -y @google/jules@latest remote pull --session "$session_id" --apply 2>/dev/null; then
         echo "FAILED: Could not apply Jules changes (session may have failed or have conflicts)" > "$result_file"
-        cd "$REPO_ROOT"
+        builtin cd "$REPO_ROOT"
         return 1
     fi
 
     # Check if there are any changes to commit
-    if [ -z "$(git status --porcelain)" ]; then
+    if [ -z "$(git -C "$worktree_path" status --porcelain)" ]; then
         echo "FAILED: No changes from Jules session" > "$result_file"
-        cd "$REPO_ROOT"
+        builtin cd "$REPO_ROOT"
         return 1
     fi
 
     # Commit the changes
-    git add -A
-    git commit -m "Jules implementation from session $session_id" 2>/dev/null
+    git -C "$worktree_path" add -A
+    git -C "$worktree_path" commit -m "Jules implementation from session $session_id" 2>/dev/null
 
-    cd "$REPO_ROOT"
+    builtin cd "$REPO_ROOT"
     echo "SUCCESS: Worktree ready with Jules changes" > "$result_file"
     return 0
 }
