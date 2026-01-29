@@ -112,7 +112,7 @@ When resuming, read the parent task metadata to determine current state and cont
 
 1. Parse arguments from the skill invocation - everything provided is the initial idea/prompt.
 
-2. If the user provided an idea, acknowledge it and save it verbatim as the `originalPrompt`. If not, ask them to describe what they want to build.
+2. **IMMEDIATELY save the user's exact input as `originalPrompt`** - this is critical for the "Original" prompt strategy later. Save it character-for-character, before any clarification or planning. If the user didn't provide an idea, ask them to describe what they want to build and save THAT response verbatim.
 
 3. Ask clarifying questions to understand:
    - What problem does this solve?
@@ -241,8 +241,11 @@ This variety tests whether more guidance helps or hinders the agents.
    ```
 
    **Prompt B: Original User Prompt** (used by 1 agent)
+
+   **CRITICAL:** Use the `originalPrompt` saved in Phase 1 metadata - the user's EXACT words before any planning or clarification. Do NOT use the refined/expanded version.
+
    ```
-   [The user's original prompt exactly as provided, verbatim]
+   [originalPrompt from metadata - e.g., "Implement the next feature in @docs/FUTURE_IDEAS.md"]
 
    ## Important Instructions
    - You are operating in NON-INTERACTIVE mode
