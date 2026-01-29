@@ -133,6 +133,35 @@ jules_api_post() {
 # Session Operations
 # ============================================================================
 
+# List all connected sources
+# Arguments: none
+# Returns: JSON response with sources array
+jules_api_list_sources() {
+    jules_api_get "/sources"
+}
+
+# Get a specific source by name
+# Arguments:
+#   $1 - Source name (e.g., "sources/github-owner-repo" or just "github-owner-repo")
+# Returns: JSON response with source details
+jules_api_get_source() {
+    local source_name="$1"
+    # Ensure proper format
+    if [[ "$source_name" != sources/* ]]; then
+        source_name="sources/$source_name"
+    fi
+    jules_api_get "/$source_name"
+}
+
+# Build source name from owner/repo
+# Arguments:
+#   $1 - GitHub repo (owner/repo format)
+# Returns: Source name in format "sources/github-owner-repo"
+jules_api_build_source_name() {
+    local repo="$1"
+    echo "sources/github-${repo//\//-}"
+}
+
 # Create a new Jules session
 # Arguments:
 #   $1 - Prompt text
@@ -148,8 +177,9 @@ jules_api_create_session() {
     local escaped_prompt
     escaped_prompt=$(echo "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
 
-    # Build source context - format: sources/github-{owner}-{repo}
-    local source_name="sources/github-${repo//\//-}"
+    # Build source name - format: sources/github-{owner}-{repo}
+    local source_name
+    source_name=$(jules_api_build_source_name "$repo")
 
     local body
     body=$(cat <<EOF
@@ -158,7 +188,7 @@ jules_api_create_session() {
   "sourceContext": {
     "source": "$source_name",
     "githubRepoContext": {
-      "branch": "$branch"
+      "startingBranch": "$branch"
     }
   },
   "requirePlanApproval": false

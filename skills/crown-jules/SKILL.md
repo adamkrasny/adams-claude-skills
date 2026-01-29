@@ -1,7 +1,7 @@
 ---
 name: crown-jules
 description: "Orchestrate parallel Jules agents to implement a feature, then compare and rank results. Use when user says: 'crown jules', 'compare jules implementations', 'jules compare', 'parallel jules', 'have multiple agents try this', 'let jules compete'."
-argument-hint: "[--agents N] [idea or prompt]"
+argument-hint: "[idea or prompt]"
 ---
 
 # Crown Jules Skill
@@ -16,6 +16,7 @@ Orchestrate multiple Jules AI agents working in parallel on the same task, then 
   ```bash
   export JULES_API_KEY='your-api-key'
   ```
+- **GitHub repo must be connected to Jules first** - Connect the repository via the [Jules web interface](https://jules.google.com) before using this skill. The API can only use sources that have already been connected.
 - **Dependencies**: `curl` and `jq` must be installed (standard on most systems)
 
 ## Jules API Reference
@@ -30,6 +31,8 @@ All API requests require the `x-goog-api-key` header with your API key.
 
 | Operation | Endpoint | Method |
 |-----------|----------|--------|
+| List sources | `/v1alpha/sources` | GET |
+| Get source | `/v1alpha/sources/{id}` | GET |
 | Create session | `/v1alpha/sessions` | POST |
 | Get session status | `/v1alpha/sessions/{id}` | GET |
 | Get activities (patches) | `/v1alpha/sessions/{id}/activities` | GET |
@@ -78,7 +81,7 @@ The `run_id` is a unique identifier for each Crown Jules workflow run. This allo
 This skill executes a 5-phase workflow:
 
 1. **Planning** - Collaborate with user to refine their idea into a clear plan
-2. **Dispatch** - Send the task to N parallel Jules agents
+2. **Dispatch** - Send the task to 4 parallel Jules agents with different prompt strategies
 3. **Polling** - Monitor progress until all agents complete
 4. **Evaluation** - Generate patches, perform deep analysis, rank results
 5. **Cleanup** - Remove patch files and reports
@@ -91,10 +94,9 @@ Use Claude's task system to track workflow state. Create a parent task for the w
 - `phase`: Current workflow phase
 - `runId`: Unique identifier for this workflow run (use a short random string, e.g., first 8 chars of a UUID)
 - `repo`: GitHub repository (owner/repo format)
+- `originalPrompt`: The user's original prompt, verbatim
 - `plan`: The high-level plan created in Phase 1
-- `prompt`: The enhanced prompt sent to Jules
-- `agentCount`: Number of parallel agents
-- `sessions`: Array of `{id, url, status}` for each Jules session
+- `sessions`: Array of `{id, url, status, promptType}` for each Jules session (promptType is "detailed", "original", or "high-level")
 
 When resuming, read the parent task metadata to determine current state and continue from where you left off.
 
@@ -108,11 +110,9 @@ When resuming, read the parent task metadata to determine current state and cont
 
 **Steps:**
 
-1. Parse any arguments from the skill invocation:
-   - `--agents N` sets the number of parallel agents (default: 4)
-   - Everything else is the initial idea/prompt
+1. Parse arguments from the skill invocation - everything provided is the initial idea/prompt.
 
-2. If the user provided an idea, acknowledge it. If not, ask them to describe what they want to build.
+2. If the user provided an idea, acknowledge it and save it verbatim as the `originalPrompt`. If not, ask them to describe what they want to build.
 
 3. Ask clarifying questions to understand:
    - What problem does this solve?
@@ -143,8 +143,8 @@ When resuming, read the parent task metadata to determine current state and cont
      metadata: {
        phase: "planning",
        runId: "[unique run ID]",
+       originalPrompt: "[the user's original prompt, verbatim]",
        plan: "[the approved plan]",
-       agentCount: [N],
        sessions: []
      }
    ```
@@ -153,7 +153,14 @@ When resuming, read the parent task metadata to determine current state and cont
 
 ## Phase 2: Dispatch
 
-**Goal:** Send the task to multiple Jules agents in parallel.
+**Goal:** Send the task to 4 Jules agents using different prompt strategies to test which approach yields the best results.
+
+**Prompt Strategy:**
+- **2 agents** receive the **detailed enhanced prompt** (full plan with step-by-step guidance)
+- **1 agent** receives the **original user prompt** (exactly as provided, unmodified)
+- **1 agent** receives a **high-level enhanced prompt** (goals and success criteria only, no detailed plan)
+
+This variety tests whether more guidance helps or hinders the agents.
 
 **Steps:**
 
@@ -181,8 +188,9 @@ When resuming, read the parent task metadata to determine current state and cont
    ```
    Parse the output to extract `owner/repo` format (handle both HTTPS and SSH URLs).
 
-3. Build the enhanced prompt for Jules. The prompt should include:
+3. Build three different prompts for Jules:
 
+   **Prompt A: Detailed Enhanced Prompt** (used by 2 agents)
    ```
    [Short descriptive title - e.g., "Add dark mode toggle to settings page"]
 
@@ -215,38 +223,94 @@ When resuming, read the parent task metadata to determine current state and cont
    4. Do NOT submit code that fails verification
    ```
 
-4. Execute the session creation script:
+   **Prompt B: Original User Prompt** (used by 1 agent)
+   ```
+   [The user's original prompt exactly as provided, verbatim]
+
+   ## Important Instructions
+   - You are operating in NON-INTERACTIVE mode
+   - Do NOT ask questions or request clarification
+   - Do NOT wait for user feedback at any point
+   - Make reasonable decisions autonomously and proceed
+   - Complete the full implementation without stopping
+
+   ## Verification Requirements
+   Before marking your work as complete, verify your changes pass all checks:
+   1. If package.json contains a "verify" script, run: npm run verify
+   2. Otherwise, run available linting/type-checking
+   3. Fix any errors before completing
+   ```
+
+   **Prompt C: High-Level Enhanced Prompt** (used by 1 agent)
+   ```
+   [Short descriptive title]
+
+   ## Goal
+   [1-2 sentences describing what to achieve - extracted from the plan]
+
+   ## Success Criteria
+   [List from the plan]
+
+   ## Important Instructions
+   - You are operating in NON-INTERACTIVE mode
+   - Do NOT ask questions or request clarification
+   - Do NOT wait for user feedback at any point
+   - Make reasonable decisions autonomously and proceed
+   - If you encounter ambiguity, choose the most sensible option and document your choice
+   - Complete the full implementation without stopping
+
+   ## Verification Requirements
+   Before marking your work as complete, verify your changes pass all checks:
+   1. If package.json contains a "verify" script, run: npm run verify
+   2. Otherwise, run available linting/type-checking
+   3. Fix any errors before completing
+   ```
+
+4. Execute session creation for each prompt type (run these sequentially, not in parallel):
+
    ```bash
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> <N> "<prompt>" main
+   # 2 agents with detailed prompt
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 2 "<Prompt A>" main
+
+   # 1 agent with original prompt
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt B>" main
+
+   # 1 agent with high-level prompt
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt C>" main
    ```
 
    **IMPORTANT:**
-   - Do NOT run this command in the background. You must capture the output synchronously to get the session IDs.
+   - Do NOT run these commands in the background. You must capture the output synchronously to get the session IDs.
    - Use a longer timeout (e.g., 2-3 minutes) as session creation can take time.
 
    **If session creation partially fails:**
    - Proceed with however many sessions were successfully created
-   - Inform the user: "X of Y sessions created due to server issues. Proceeding with X agents."
-   - If zero sessions were created, wait 30 seconds and retry once
+   - Inform the user which prompt types succeeded/failed
+   - If zero sessions were created across all types, wait 30 seconds and retry once
 
-5. Parse the output to extract session IDs and URLs from the JSON output.
+5. Parse the output from each call to extract session IDs and URLs from the JSON output.
 
-6. Update the workflow task with session information:
+6. Update the workflow task with session information, noting which prompt type each session used:
    ```
    TaskUpdate:
      metadata: {
        phase: "polling",
        repo: "<owner/repo>",
-       prompt: "<the enhanced prompt>",
        sessions: [
-         {id: "<id1>", url: "<url1>", status: "Started"},
-         {id: "<id2>", url: "<url2>", status: "Started"},
-         ...
+         {id: "<id1>", url: "<url1>", status: "Started", promptType: "detailed"},
+         {id: "<id2>", url: "<url2>", status: "Started", promptType: "detailed"},
+         {id: "<id3>", url: "<url3>", status: "Started", promptType: "original"},
+         {id: "<id4>", url: "<url4>", status: "Started", promptType: "high-level"}
        ]
      }
    ```
 
-7. Inform the user that agents have been dispatched and provide links to all sessions.
+7. Inform the user that agents have been dispatched with the prompt strategy:
+   - 2 agents with **detailed prompt** (full plan)
+   - 1 agent with **original prompt** (user's exact words)
+   - 1 agent with **high-level prompt** (goals only)
+
+   Provide links to all sessions, noting which prompt type each received.
 
 ---
 
@@ -409,19 +473,25 @@ After your evaluation, present results to the user:
    - Why #1 is best (what it got right)
    - What each implementation did differently
    - Any issues or gaps you noticed
+   - Note which prompt type each session used
 
 2. **Metrics table** (informational, from the report):
 
-| Session | Lines +/- | Files | Tests |
-|---------|-----------|-------|-------|
-| [abc123](url) | +245/-12 | 5 | 2 |
-| [def456](url) | +189/-8 | 4 | 1 |
+| Session | Prompt Type | Lines +/- | Files | Tests |
+|---------|-------------|-----------|-------|-------|
+| [abc123](url) | detailed | +245/-12 | 5 | 2 |
+| [def456](url) | original | +189/-8 | 4 | 1 |
 
-3. **Recommendation** with clear reasoning:
+3. **Prompt Strategy Insights**:
+   - Did the detailed prompt produce better results?
+   - How did the original (unmodified) prompt perform?
+   - Did the high-level prompt give the agent more useful flexibility?
+
+4. **Recommendation** with clear reasoning:
    - What made this implementation the best fit for the request
    - Any tradeoffs the user should know about
 
-4. **Next steps**:
+5. **Next steps**:
    - How to apply locally: `git apply .crown-jules/<run_id>/<session_id>.patch`
    - Link to create PR from Jules interface
 
@@ -433,22 +503,30 @@ Example output format:
 
 After reviewing all patches against the original request to "add dark mode toggle":
 
-### #1: Session abc123
+### #1: Session abc123 (detailed prompt)
 **Best implementation** - Correctly adds toggle to settings, persists preference to localStorage, and applies theme immediately on change. Clean implementation that does exactly what was asked.
 
-### #2: Session def456
+### #2: Session def456 (high-level prompt)
 Good attempt but missing localStorage persistence - theme resets on page reload.
 
-### #3: Session ghi789
-Over-engineered - added a full theming system with 5 color schemes when only dark/light was requested. Also introduced a bug in the CSS that breaks mobile layout.
+### #3: Session ghi789 (detailed prompt)
+Similar to #1 but chose a different CSS approach that's slightly more complex.
+
+### #4: Session jkl012 (original prompt)
+Over-engineered - added a full theming system with 5 color schemes when only dark/light was requested. Without the specific guidance, the agent interpreted the request too broadly.
 
 ## Metrics (informational)
 
-| Session | Lines +/- | Files | Tests |
-|---------|-----------|-------|-------|
-| [abc123](url) | +245/-12 | 5 | 2 |
-| [def456](url) | +189/-8 | 4 | 1 |
-| [ghi789](url) | +512/-45 | 12 | 3 |
+| Session | Prompt Type | Lines +/- | Files | Tests |
+|---------|-------------|-----------|-------|-------|
+| [abc123](url) | detailed | +245/-12 | 5 | 2 |
+| [def456](url) | high-level | +189/-8 | 4 | 1 |
+| [ghi789](url) | detailed | +267/-15 | 5 | 2 |
+| [jkl012](url) | original | +512/-45 | 12 | 3 |
+
+## Prompt Strategy Insights
+
+In this run, the **detailed prompts** performed best - the explicit plan helped agents stay focused on exactly what was needed. The **original prompt** led to over-engineering, suggesting that more guidance was beneficial for this task. The **high-level prompt** found a middle ground but missed some details.
 
 ## Recommendation
 
@@ -531,6 +609,7 @@ This structure allows multiple Crown Jules workflows to run in parallel on the s
 
 - **JULES_API_KEY not set**: Inform user to set the environment variable: `export JULES_API_KEY='your-api-key'`
 - **Invalid or expired API key**: Inform user their API key may be invalid and to check/regenerate it
+- **Source not found (400 error on session creation)**: The GitHub repository hasn't been connected to Jules. Direct user to connect it at https://jules.google.com first.
 - **No git repository**: Skill requires being run inside a git repository
 - **All agents failed**: Report failure, provide links to sessions for manual inspection
 - **No patch in activities**: The session may not have generated changes - check the Jules web UI
@@ -566,7 +645,7 @@ This structure allows multiple Crown Jules workflows to run in parallel on the s
 ```
 /crown-jules Add a dark mode toggle to the settings page
 
-/crown-jules --agents 6 Implement user authentication with JWT
+/crown-jules Implement user authentication with JWT
 
 /crown-jules
 (Then describe your idea when prompted)
