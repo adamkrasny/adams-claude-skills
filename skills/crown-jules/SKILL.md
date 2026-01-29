@@ -57,7 +57,7 @@ This skill includes several scripts for workflow automation:
 
 ```bash
 # Create N parallel sessions
-~/.claude/skills/crown-jules/create-sessions.sh <repo> <count> "<prompt>" [branch]
+~/.claude/skills/crown-jules/create-sessions.sh <repo> <count> "<prompt>" [branch] [title]
 
 # Poll sessions until completion
 ~/.claude/skills/crown-jules/poll-sessions.sh <session_id1> <session_id2> ...
@@ -286,14 +286,16 @@ This variety tests whether more guidance helps or hinders the agents.
 
    ```bash
    # 2 agents with detailed prompt
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 2 "<Prompt A>" main
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 2 "<Prompt A>" main "Detailed: <short task description>"
 
    # 1 agent with original prompt
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt B>" main
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt B>" main "Original: <short task description>"
 
    # 1 agent with high-level prompt
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt C>" main
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt C>" main "High-Level: <short task description>"
    ```
+
+   The title prefix (Detailed/Original/High-Level) helps identify which prompt strategy each session used.
 
    **IMPORTANT:**
    - Do NOT run these commands in the background. You must capture the output synchronously to get the session IDs.

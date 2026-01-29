@@ -167,23 +167,34 @@ jules_api_build_source_name() {
 #   $1 - Prompt text
 #   $2 - GitHub repo (owner/repo format)
 #   $3 - Branch name (optional, defaults to "main")
+#   $4 - Session title (optional)
 # Returns: JSON response with session details
 jules_api_create_session() {
     local prompt="$1"
     local repo="$2"
     local branch="${3:-main}"
+    local title="$4"
 
     # Escape special characters in prompt for JSON
     local escaped_prompt
     escaped_prompt=$(echo "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
 
-    # Build source name - format: sources/github-{owner}-{repo}
+    # Build source name - format: sources/github/owner/repo
     local source_name
     source_name=$(jules_api_build_source_name "$repo")
+
+    # Build title field if provided
+    local title_field=""
+    if [ -n "$title" ]; then
+        local escaped_title
+        escaped_title=$(echo "$title" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        title_field="\"title\": \"$escaped_title\","
+    fi
 
     local body
     body=$(cat <<EOF
 {
+  ${title_field}
   "prompt": "$escaped_prompt",
   "sourceContext": {
     "source": "$source_name",

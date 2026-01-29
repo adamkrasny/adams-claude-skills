@@ -1,6 +1,6 @@
 #!/bin/bash
 # Crown Jules - Parallel Session Creation Script
-# Usage: ./create-sessions.sh <repo> <count> "<prompt>" [branch]
+# Usage: ./create-sessions.sh <repo> <count> "<prompt>" [branch] [title]
 # Creates N Jules sessions in parallel and outputs JSON with session IDs and URLs
 # Compatible with bash 3.2+ (macOS default)
 
@@ -11,8 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/api-client.sh"
 
 if [ $# -lt 3 ]; then
-    echo "Usage: $0 <repo> <count> \"<prompt>\" [branch]"
-    echo "Example: $0 owner/repo 4 \"Add dark mode toggle\" main"
+    echo "Usage: $0 <repo> <count> \"<prompt>\" [branch] [title]"
+    echo "Example: $0 owner/repo 4 \"Add dark mode toggle\" main \"Detailed: Add dark mode\""
     exit 1
 fi
 
@@ -20,6 +20,7 @@ REPO="$1"
 COUNT="$2"
 PROMPT="$3"
 BRANCH="${4:-main}"
+TITLE="${5:-}"
 
 # Validate count is a positive integer
 if ! [[ "$COUNT" =~ ^[1-9][0-9]*$ ]]; then
@@ -50,7 +51,7 @@ for ((i=1; i<=COUNT; i++)); do
         error_file="$TEMP_DIR/session_$i.err"
 
         # Create session
-        response=$(jules_api_create_session "$PROMPT" "$REPO" "$BRANCH" 2>"$error_file")
+        response=$(jules_api_create_session "$PROMPT" "$REPO" "$BRANCH" "$TITLE" 2>"$error_file")
         exit_code=$?
 
         if [ $exit_code -eq 0 ] && [ -n "$response" ]; then
