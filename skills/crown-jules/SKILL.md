@@ -12,47 +12,57 @@ Orchestrate multiple Jules AI agents working in parallel on the same task, then 
 
 ## Important Notes
 
-- **Always use `npx -y @google/jules@latest`** to run Jules commands. This ensures the CLI is available without requiring global installation.
+- **Requires `JULES_API_KEY` environment variable** - Set your Jules API key before using this skill:
+  ```bash
+  export JULES_API_KEY='your-api-key'
+  ```
+- **Dependencies**: `curl` and `jq` must be installed (standard on most systems)
 
-## Jules CLI Reference
+## Jules API Reference
 
-### Available Commands
+This skill uses the Jules REST API (`https://jules.googleapis.com/v1alpha`) for all operations.
+
+### Authentication
+
+All API requests require the `x-goog-api-key` header with your API key.
+
+### API Endpoints Used
+
+| Operation | Endpoint | Method |
+|-----------|----------|--------|
+| Create session | `/v1alpha/sessions` | POST |
+| Get session status | `/v1alpha/sessions/{id}` | GET |
+| Get activities (patches) | `/v1alpha/sessions/{id}/activities` | GET |
+
+### Session States
+
+| API State | Display Name | Action |
+|-----------|--------------|--------|
+| `QUEUED` | Queued | Keep polling |
+| `PLANNING` | Planning | Keep polling |
+| `AWAITING_PLAN_APPROVAL` | Awaiting Plan Approval | Keep polling (auto-approves) |
+| `IN_PROGRESS` | In Progress | Keep polling |
+| `COMPLETED` | Completed | Ready for evaluation |
+| `FAILED` | Failed | Mark as failed |
+| `AWAITING_USER_FEEDBACK` | Awaiting User Feedback | Keep polling, notify user if persistent |
+
+**CRITICAL:** The "Awaiting Plan Approval" status is TRANSIENT. Plans auto-approve after a short delay. Do NOT stop polling or ask the user to manually approve plans. Just continue the polling loop.
+
+### Scripts
+
+This skill includes several scripts for workflow automation:
 
 ```bash
-# Create new session(s)
-npx -y @google/jules@latest new --repo <owner/repo> "<prompt>"
-npx -y @google/jules@latest new --repo <owner/repo> --parallel <N> "<prompt>"
+# Create N parallel sessions
+~/.claude/skills/crown-jules/create-sessions.sh <repo> <count> "<prompt>" [branch]
 
-# List sessions and check status
-npx -y @google/jules@latest remote list --session
-
-# Pull changes from a session
-npx -y @google/jules@latest remote pull --session <session_id>           # Show diff only
-npx -y @google/jules@latest remote pull --session <session_id> --apply   # Apply changes locally
-
-# Authentication
-npx -y @google/jules@latest login
-```
-
-### Polling Script
-
-This skill includes a polling script that handles waiting for sessions to complete:
-
-```bash
+# Poll sessions until completion
 ~/.claude/skills/crown-jules/poll-sessions.sh <session_id1> <session_id2> ...
-```
 
-The script polls every 30 seconds and displays a clean status table with URLs. It exits when all sessions reach terminal state.
+# Generate patch files from completed sessions
+~/.claude/skills/crown-jules/generate-patches.sh <run_id> <session_id1> <session_id2> ...
 
-### Evaluation Scripts
-
-These scripts handle the evaluation phase:
-
-```bash
-# Generate patch files for all sessions
-~/.claude/skills/crown-jules/generate-patches.sh <run_id> <base_branch> <session_id1> <session_id2> ...
-
-# Analyze all patches and generate comparison reports
+# Analyze patches and generate comparison report
 ~/.claude/skills/crown-jules/compare-sessions.sh <run_id> [base_branch]
 
 # Clean up patch files and reports
@@ -60,27 +70,6 @@ These scripts handle the evaluation phase:
 ```
 
 The `run_id` is a unique identifier for each Crown Jules workflow run. This allows multiple Crown Jules sessions to run in parallel on the same repository without conflicts.
-
-### Commands That DO NOT Exist (do not try these)
-- `npx -y @google/jules@latest --version` - Does not exist
-- `npx -y @google/jules@latest auth status` - Does not exist
-- `npx -y @google/jules@latest status` - Does not exist
-- `npx -y @google/jules@latest check` - Does not exist
-
-### Session Status Values
-
-When parsing `npx -y @google/jules@latest remote list --session` output, these are the possible status values:
-
-| Status | Meaning | Action |
-|--------|---------|--------|
-| `Planning` | Agent is creating a plan | Keep polling |
-| `Awaiting Plan Approval` or `Awaiting Plan A...` | Plan created, will auto-approve shortly | **Keep polling - do NOT ask user to approve** |
-| `In Progress` | Agent is implementing | Keep polling |
-| `Completed` | Agent finished successfully | Ready for evaluation |
-| `Failed` | Agent encountered an error | Mark as failed |
-| `Awaiting User F...` | Needs user input (rare) | Keep polling for a few cycles, then notify user |
-
-**CRITICAL:** The "Awaiting Plan Approval" status is TRANSIENT. Plans auto-approve after a short delay. Do NOT stop polling or ask the user to manually approve plans. Just continue the polling loop.
 
 ---
 
@@ -168,25 +157,7 @@ When resuming, read the parent task metadata to determine current state and cont
 
 **Steps:**
 
-1. Capture the current state of main branch before dispatch:
-
-   Jules agents always work from the main branch on GitHub. To ensure we can apply their changes without conflicts later, we need to capture the exact state of main at dispatch time.
-
-   ```bash
-   # Ensure we're on main and have latest changes
-   git checkout main
-   git pull origin main
-
-   # Create the run directory
-   mkdir -p .crown-jules/<run_id>
-
-   # Create worktree from current main state
-   git worktree add -b crown-jules/<run_id> .crown-jules/<run_id>/worktree main
-   ```
-
-   This worktree preserves the exact commit that Jules agents will be working from. The generate-patches.sh script will use this existing worktree later.
-
-2. Ensure `.crown-jules` is in `.gitignore`:
+1. Ensure `.crown-jules` is in `.gitignore`:
    ```bash
    # Check if .gitignore exists and contains .crown-jules (with or without trailing slash)
    grep -qE "^\.crown-jules/?$" .gitignore 2>/dev/null
@@ -204,13 +175,13 @@ When resuming, read the parent task metadata to determine current state and cont
      ```
    - Inform the user: "Added `.crown-jules/` to `.gitignore` to prevent workflow files from being committed."
 
-3. Auto-detect the repository:
+2. Auto-detect the repository:
    ```bash
    git remote get-url origin
    ```
    Parse the output to extract `owner/repo` format (handle both HTTPS and SSH URLs).
 
-4. Build the enhanced prompt for Jules. The prompt should include:
+3. Build the enhanced prompt for Jules. The prompt should include:
 
    ```
    [Short descriptive title - e.g., "Add dark mode toggle to settings page"]
@@ -244,34 +215,23 @@ When resuming, read the parent task metadata to determine current state and cont
    4. Do NOT submit code that fails verification
    ```
 
-5. Execute the Jules command:
+4. Execute the session creation script:
    ```bash
-   npx -y @google/jules@latest new --repo <owner/repo> --parallel <N> "<prompt>"
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> <N> "<prompt>" main
    ```
 
    **IMPORTANT:**
    - Do NOT run this command in the background. You must capture the output synchronously to get the session IDs.
    - Use a longer timeout (e.g., 2-3 minutes) as session creation can take time.
-   - The command will block until all sessions are created.
 
-   **If parallel creation partially fails (server errors):**
-   - Do NOT fall back to creating sessions individually
-   - Do NOT retry with separate `npx -y @google/jules@latest new` commands
-   - Instead: proceed with however many sessions were successfully created
+   **If session creation partially fails:**
+   - Proceed with however many sessions were successfully created
    - Inform the user: "X of Y sessions created due to server issues. Proceeding with X agents."
-   - If zero sessions were created, wait 30 seconds and retry the parallel command once
+   - If zero sessions were created, wait 30 seconds and retry once
 
-6. Parse the output to extract session IDs and URLs. Expected format:
-   ```
-   N parallel sessions created successfully:
-   Task: <prompt>
+5. Parse the output to extract session IDs and URLs from the JSON output.
 
-   Session #N:
-     ID: <session_id>
-     URL: https://jules.google.com/session/<session_id>
-   ```
-
-7. Update the workflow task with session information:
+6. Update the workflow task with session information:
    ```
    TaskUpdate:
      metadata: {
@@ -286,7 +246,7 @@ When resuming, read the parent task metadata to determine current state and cont
      }
    ```
 
-8. Inform the user that agents have been dispatched and provide links to all sessions.
+7. Inform the user that agents have been dispatched and provide links to all sessions.
 
 ---
 
@@ -304,7 +264,7 @@ When resuming, read the parent task metadata to determine current state and cont
    ```
 
    The script will:
-   - Poll `npx -y @google/jules@latest remote list --session` every 30 seconds
+   - Poll each session via API every 30 seconds
    - Display a clean status table with Session ID, Status, and Jules Web URL
    - Automatically handle all status transitions (Planning → In Progress → Completed)
    - Exit when ALL sessions reach terminal state (Completed or Failed)
@@ -354,34 +314,25 @@ Waiting 30s for next poll... (Ctrl+C to stop)
 
 ### 4a. Generate Patches
 
-1. Verify clean working state:
-   ```bash
-   git status --porcelain
-   ```
-   If there are uncommitted changes, warn the user and ask how to proceed.
+1. Extract the `runId` and completed session IDs from workflow metadata.
 
-2. Extract the `runId` and completed session IDs from workflow metadata.
-
-3. Run the patch generation script:
+2. Run the patch generation script:
    ```bash
-   ~/.claude/skills/crown-jules/generate-patches.sh <run_id> main <session_id_1> <session_id_2> ...
+   ~/.claude/skills/crown-jules/generate-patches.sh <run_id> <session_id_1> <session_id_2> ...
    ```
 
    The script will:
-   - Create a single temporary worktree on branch `crown-jules/<run_id>`
-   - For each session sequentially:
-     - Apply Jules changes
-     - Generate patch file: `.crown-jules/<run_id>/<session_id>.patch`
-     - Reset worktree for next session
-   - Remove the worktree and branch when done
+   - Fetch activities for each session via the Jules API
+   - Extract the unified diff patch from the `changeSet.gitPatch.unidiffPatch` field
+   - Save patches to `.crown-jules/<run_id>/<session_id>.patch`
    - Report success/failure for each session
 
-4. Verify patches were created:
+3. Verify patches were created:
    ```bash
    ls -la .crown-jules/<run_id>/*.patch
    ```
 
-5. **If the script fails or exits with an error:**
+4. **If the script fails or exits with an error:**
    - Do NOT fall back to manual patch generation
    - STOP and inform the user of the error
    - Ask how they want to proceed
@@ -482,13 +433,13 @@ Example output format:
 
 After reviewing all patches against the original request to "add dark mode toggle":
 
-### 🥇 #1: Session abc123
+### #1: Session abc123
 **Best implementation** - Correctly adds toggle to settings, persists preference to localStorage, and applies theme immediately on change. Clean implementation that does exactly what was asked.
 
-### 🥈 #2: Session def456
+### #2: Session def456
 Good attempt but missing localStorage persistence - theme resets on page reload.
 
-### 🥉 #3: Session ghi789
+### #3: Session ghi789
 Over-engineered - added a full theming system with 5 color schemes when only dark/light was requested. Also introduced a bug in the CSS that breaks mobile layout.
 
 ## Metrics (informational)
@@ -578,25 +529,35 @@ This structure allows multiple Crown Jules workflows to run in parallel on the s
 
 ## Error Handling
 
-- **Jules CLI authentication required**: Inform user to run `npx -y @google/jules@latest login` to authenticate
+- **JULES_API_KEY not set**: Inform user to set the environment variable: `export JULES_API_KEY='your-api-key'`
+- **Invalid or expired API key**: Inform user their API key may be invalid and to check/regenerate it
 - **No git repository**: Skill requires being run inside a git repository
 - **All agents failed**: Report failure, provide links to sessions for manual inspection
-- **Patch application conflicts**: Mark session as failed, continue with others
+- **No patch in activities**: The session may not have generated changes - check the Jules web UI
 - **Network issues during polling**: Retry with backoff, inform user if persistent
+- **Rate limiting (429 errors)**: Scripts handle this automatically with exponential backoff
 - **Session stuck in Awaiting User Feedback for 5+ poll cycles**: Notify user they may need to check the Jules web UI
 
 ## Troubleshooting
 
-**If `npx -y @google/jules@latest new` seems to hang:**
-- Do NOT cancel and retry immediately
-- The command can take 1-2 minutes to create parallel sessions
-- Use a timeout of at least 3 minutes
-- Check if Jules is authenticated: run `npx -y @google/jules@latest login` if needed
+**If session creation seems slow:**
+- API calls can take 10-30 seconds per session
+- Creating multiple sessions in parallel helps
+- Check your network connection
+
+**If no patches are found:**
+- Verify the session completed successfully (not failed)
+- Check the Jules web UI to see if the agent made changes
+- Some sessions may complete without making changes if the task was unclear
+
+**If you see authentication errors:**
+- Verify `JULES_API_KEY` is set: `echo $JULES_API_KEY`
+- Ensure the key is valid and not expired
+- Try generating a new API key if issues persist
 
 **If session IDs weren't captured:**
-- Run `npx -y @google/jules@latest remote list --session` to find recent sessions
-- Look for sessions matching your task description
-- Sessions are listed with most recent first
+- Check the output of create-sessions.sh for errors
+- Sessions are also visible in the Jules web UI at https://jules.google.com
 
 ---
 

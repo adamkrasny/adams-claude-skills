@@ -1,22 +1,30 @@
 #!/bin/bash
 # Crown Jules - Patch Generation Script
-# Usage: ./generate-patches.sh <run_id> <base_branch> <session_id1> <session_id2> ...
-# Uses the existing worktree created during dispatch, generates patch files, then cleans up
+# Usage: ./generate-patches.sh <run_id> <session_id1> <session_id2> ...
+# Fetches patches from Jules API and saves them to .crown-jules/<run_id>/
 # Compatible with bash 3.2+ (macOS default)
 
 set -e
 
-if [ $# -lt 3 ]; then
-    echo "Usage: $0 <run_id> <base_branch> <session_id1> [session_id2] ..."
-    echo "Example: $0 abc123 main 15117933240154076744 7829403212940903160"
+# Source the API client library
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/api-client.sh"
+
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <run_id> <session_id1> [session_id2] ..."
+    echo "Example: $0 abc123 15117933240154076744 7829403212940903160"
     exit 1
 fi
 
 RUN_ID="$1"
-BASE_BRANCH="$2"
-shift 2
+shift
 SESSION_IDS=("$@")
 SESSION_COUNT=${#SESSION_IDS[@]}
+
+# Check authentication
+if ! jules_api_check_auth; then
+    exit 1
+fi
 
 # Get repository root
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
@@ -27,51 +35,12 @@ fi
 
 # All Crown Jules files live under .crown-jules/<run_id>/
 CROWN_JULES_DIR="$REPO_ROOT/.crown-jules/$RUN_ID"
-WORKTREE_BRANCH="crown-jules/$RUN_ID"
-WORKTREE_PATH="$CROWN_JULES_DIR/worktree"
 
-# Verify worktree exists (should have been created during dispatch phase)
-if [ ! -d "$WORKTREE_PATH" ]; then
-    echo "ERROR: Worktree not found at $WORKTREE_PATH"
-    echo "The worktree should have been created during the dispatch phase."
-    echo "Expected: git worktree add -b $WORKTREE_BRANCH $WORKTREE_PATH main"
-    exit 1
-fi
-
-# Verify the worktree branch exists
-if ! git rev-parse --verify "$WORKTREE_BRANCH" >/dev/null 2>&1; then
-    echo "ERROR: Worktree branch '$WORKTREE_BRANCH' does not exist"
-    exit 1
-fi
-
-# Check for clean working tree in main repo
-if [ -n "$(git status --porcelain)" ]; then
-    echo "ERROR: Working tree is not clean. Commit or stash changes first."
-    exit 1
-fi
+# Create the output directory
+mkdir -p "$CROWN_JULES_DIR"
 
 echo "Run ID: $RUN_ID"
-echo "Using existing worktree at $WORKTREE_PATH"
-echo "Generating patches for $SESSION_COUNT sessions..."
-echo ""
-
-# Cleanup function to ensure worktree is removed
-cleanup_worktree() {
-    if [ -d "$WORKTREE_PATH" ]; then
-        git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || rm -rf "$WORKTREE_PATH"
-        git worktree prune 2>/dev/null || true
-    fi
-    if git rev-parse --verify "$WORKTREE_BRANCH" >/dev/null 2>&1; then
-        git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
-    fi
-}
-
-# Set trap to cleanup on exit (success or failure)
-trap cleanup_worktree EXIT
-
-# Reset worktree to clean state before starting
-git -C "$WORKTREE_PATH" reset --hard HEAD 2>/dev/null
-git -C "$WORKTREE_PATH" clean -fd 2>/dev/null
+echo "Fetching patches for $SESSION_COUNT sessions via API..."
 echo ""
 
 # Track results
@@ -82,55 +51,42 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 printf "%-24s %-50s\n" "Session ID" "Result"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Process each session sequentially
+# Process each session
 for session_id in "${SESSION_IDS[@]}"; do
     patch_file="$CROWN_JULES_DIR/$session_id.patch"
     result=""
 
-    # Use 'builtin cd' to bypass shell hooks like zoxide
-    builtin cd "$WORKTREE_PATH"
+    # Fetch activities for this session
+    activities_response=$(jules_api_get_activities "$session_id" 2>/dev/null)
 
-    # Apply Jules changes
-    if ! npx -y @google/jules@latest remote pull --session "$session_id" --apply 2>/dev/null; then
-        result="FAILED: Could not apply Jules changes"
+    if [ -z "$activities_response" ]; then
+        result="FAILED: Could not fetch activities from API"
         printf "%-24s ✗ %s\n" "$session_id" "$result"
         failed_count=$((failed_count + 1))
-        # Reset for next session
-        git checkout . 2>/dev/null
-        git clean -fd 2>/dev/null
-        builtin cd "$REPO_ROOT"
         continue
     fi
 
-    # Check if there are any changes
-    if [ -z "$(git -C "$WORKTREE_PATH" status --porcelain)" ]; then
-        result="FAILED: No changes from Jules session"
+    # Extract the patch from activities
+    patch_content=$(jules_api_extract_patch "$activities_response")
+
+    if [ -z "$patch_content" ]; then
+        result="FAILED: No patch found in session activities"
         printf "%-24s ✗ %s\n" "$session_id" "$result"
         failed_count=$((failed_count + 1))
-        builtin cd "$REPO_ROOT"
         continue
     fi
 
-    # Stage all changes for diff
-    git -C "$WORKTREE_PATH" add -A
+    # Write patch to file
+    echo "$patch_content" > "$patch_file"
 
-    # Generate patch file (diff against base branch)
-    git -C "$WORKTREE_PATH" diff --cached > "$patch_file"
-
-    # Get patch stats for output
-    lines_added=$(git -C "$WORKTREE_PATH" diff --cached --numstat | awk '{sum += $1} END {print sum+0}')
-    lines_removed=$(git -C "$WORKTREE_PATH" diff --cached --numstat | awk '{sum += $2} END {print sum+0}')
-    files_changed=$(git -C "$WORKTREE_PATH" diff --cached --numstat | wc -l | tr -d ' ')
+    # Get patch stats
+    lines_added=$(grep -c "^+[^+]" "$patch_file" 2>/dev/null || echo "0")
+    lines_removed=$(grep -c "^-[^-]" "$patch_file" 2>/dev/null || echo "0")
+    files_changed=$(grep -c "^diff --git" "$patch_file" 2>/dev/null || echo "0")
 
     result="SUCCESS: +$lines_added/-$lines_removed lines, $files_changed files"
     printf "%-24s ✓ %s\n" "$session_id" "$result"
     success_count=$((success_count + 1))
-
-    # Reset worktree for next session
-    git -C "$WORKTREE_PATH" reset --hard HEAD 2>/dev/null
-    git -C "$WORKTREE_PATH" clean -fd 2>/dev/null
-
-    builtin cd "$REPO_ROOT"
 done
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -151,8 +107,6 @@ if [ $success_count -gt 0 ]; then
     echo ""
     echo "Run compare-sessions.sh $RUN_ID to analyze the implementations."
 fi
-
-# Cleanup happens via trap on EXIT
 
 # Exit with error if all failed
 if [ $success_count -eq 0 ]; then

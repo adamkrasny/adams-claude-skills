@@ -1,16 +1,24 @@
 #!/bin/bash
-# Jules Compare - Session Polling Script
+# Crown Jules - Session Polling Script
 # Usage: ./poll-sessions.sh <session_id1> <session_id2> ...
-# Polls jules sessions every 30 seconds until all reach terminal state (Completed/Failed)
+# Polls Jules sessions via API every 30 seconds until all reach terminal state (Completed/Failed)
 # Compatible with bash 3.2+ (macOS default)
+
+# Source the API client library
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/api-client.sh"
 
 if [ $# -eq 0 ]; then
     echo "Usage: $0 <session_id1> [session_id2] ..."
     exit 1
 fi
 
+# Check authentication
+if ! jules_api_check_auth; then
+    exit 1
+fi
+
 POLL_INTERVAL=30
-JULES_URL_BASE="https://jules.google.com/session"
 
 # Store session IDs in a simple array
 SESSION_IDS=("$@")
@@ -22,59 +30,10 @@ for ((i=0; i<SESSION_COUNT; i++)); do
     SESSION_STATUSES+=("Pending")
 done
 
-# Terminal states that indicate a session is done
-is_terminal_status() {
-    local status="$1"
-    case "$status" in
-        Completed|Failed) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
-# Get status for a single session from jules remote list output
-get_session_status() {
-    local session_id="$1"
-    local output="$2"
-
-    # Find the line containing this session ID
-    # Use grep -F for fixed string matching, strip ANSI codes first
-    local clean_output=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g')
-    local line=$(echo "$clean_output" | grep -F "$session_id" | head -1)
-
-    if [ -z "$line" ]; then
-        echo "Pending"
-        return
-    fi
-
-    # Status is the last column - extract it
-    # The output format is: ID  Description  Repo  LastActive  Status
-    local status=$(echo "$line" | awk '{print $NF}')
-
-    # Handle multi-word statuses that got truncated in the output
-    case "$status" in
-        Progress) echo "In Progress" ;;
-        Approval|A|A...) echo "Awaiting Plan Approval" ;;
-        F|F...) echo "Awaiting User Feedback" ;;
-        Planning) echo "Planning" ;;
-        Completed) echo "Completed" ;;
-        Failed) echo "Failed" ;;
-        *)
-            # Check if it might be part of "In Progress" or other multi-word status
-            if echo "$line" | grep -q "In Progress"; then
-                echo "In Progress"
-            elif echo "$line" | grep -q "Awaiting"; then
-                echo "Awaiting Approval"
-            else
-                echo "$status"
-            fi
-            ;;
-    esac
-}
-
 # Print status table
 print_status_table() {
     echo ""
-    echo "Jules Compare - Polling Sessions (every ${POLL_INTERVAL}s)"
+    echo "Crown Jules - Polling Sessions (every ${POLL_INTERVAL}s)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     printf "%-22s %-24s %s\n" "Session ID" "Status" "URL"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -82,7 +41,7 @@ print_status_table() {
     for ((i=0; i<SESSION_COUNT; i++)); do
         local session_id="${SESSION_IDS[$i]}"
         local status="${SESSION_STATUSES[$i]}"
-        local url="${JULES_URL_BASE}/${session_id}"
+        local url=$(jules_api_session_url "$session_id")
         local status_display="$status"
 
         # Add checkmark for completed, X for failed
@@ -105,49 +64,61 @@ MAX_CONSECUTIVE_FAILURES=10
 
 while [ "$all_done" = false ]; do
     poll_count=$((poll_count + 1))
+    all_done=true
+    poll_failed=false
 
-    # Get current status from jules (capture both stdout and stderr)
-    error_output=$(mktemp)
-    output=$(npx -y @google/jules@latest remote list --session 2>"$error_output") || output=""
-    error_content=$(cat "$error_output")
-    rm -f "$error_output"
+    # Poll each session individually via API
+    for ((i=0; i<SESSION_COUNT; i++)); do
+        session_id="${SESSION_IDS[$i]}"
 
-    # If output is empty, show error and retry
-    if [ -z "$output" ]; then
-        consecutive_failures=$((consecutive_failures + 1))
-        echo "Warning: Could not get session list from Jules CLI (attempt $consecutive_failures/$MAX_CONSECUTIVE_FAILURES)"
-        if [ -n "$error_content" ]; then
-            echo "  Error: $error_content"
+        # Get session status via API
+        response=$(jules_api_get_session "$session_id" 2>/dev/null)
+
+        if [ -z "$response" ]; then
+            poll_failed=true
+            continue
         fi
+
+        # Extract state from response
+        api_state=$(echo "$response" | jq -r '.state // empty')
+
+        if [ -n "$api_state" ]; then
+            # Convert API state to display name
+            display_status=$(jules_api_state_to_display "$api_state")
+            SESSION_STATUSES[$i]="$display_status"
+
+            # Check if terminal
+            if ! jules_api_is_terminal_state "$api_state"; then
+                all_done=false
+            fi
+        else
+            poll_failed=true
+        fi
+    done
+
+    # Handle consecutive failures
+    if [ "$poll_failed" = true ] && [ "$all_done" = true ]; then
+        # Only count as failure if we think we're done but had errors
+        consecutive_failures=$((consecutive_failures + 1))
+        echo "Warning: Could not get status for some sessions (attempt $consecutive_failures/$MAX_CONSECUTIVE_FAILURES)"
 
         if [ $consecutive_failures -ge $MAX_CONSECUTIVE_FAILURES ]; then
             echo ""
-            echo "ERROR: Failed to get session list after $MAX_CONSECUTIVE_FAILURES attempts."
+            echo "ERROR: Failed to get session status after $MAX_CONSECUTIVE_FAILURES attempts."
             echo "Possible causes:"
-            echo "  - Jules CLI not authenticated (run: npx -y @google/jules@latest login)"
+            echo "  - JULES_API_KEY is invalid or expired"
             echo "  - Network connectivity issues"
             echo "  - Jules API is down"
             exit 1
         fi
 
         sleep 5
+        all_done=false
         continue
     fi
 
     # Reset failure counter on success
     consecutive_failures=0
-
-    # Update statuses
-    all_done=true
-    for ((i=0; i<SESSION_COUNT; i++)); do
-        session_id="${SESSION_IDS[$i]}"
-        status=$(get_session_status "$session_id" "$output")
-        SESSION_STATUSES[$i]="$status"
-
-        if ! is_terminal_status "$status"; then
-            all_done=false
-        fi
-    done
 
     # Print current status
     print_status_table
