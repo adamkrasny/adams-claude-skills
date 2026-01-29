@@ -156,10 +156,10 @@ jules_api_get_source() {
 # Build source name from owner/repo
 # Arguments:
 #   $1 - GitHub repo (owner/repo format)
-# Returns: Source name in format "sources/github-owner-repo"
+# Returns: Source name in format "sources/github/owner/repo"
 jules_api_build_source_name() {
     local repo="$1"
-    echo "sources/github-${repo//\//-}"
+    echo "sources/github/${repo}"
 }
 
 # Create a new Jules session
