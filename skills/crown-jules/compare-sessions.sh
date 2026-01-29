@@ -107,40 +107,8 @@ analyze_patch() {
     # Cleanup temp file
     rm -f "$added_lines_file"
 
-    # Calculate scores (0-100 scale)
-    local size_score=50
+    # Total lines changed (informational only - not used for scoring)
     local total_lines=$((lines_added + lines_removed))
-    if [ $total_lines -lt 20 ]; then
-        size_score=$((total_lines * 2))  # Penalize too small
-    elif [ $total_lines -gt 1000 ]; then
-        size_score=$((100 - (total_lines - 1000) / 50))  # Penalize too large
-        [ $size_score -lt 0 ] && size_score=0
-    else
-        size_score=$((50 + (total_lines - 20) * 50 / 980))  # Scale 20-1000 to 50-100
-    fi
-
-    local complexity_score=50
-    if [ $decision_points -gt 0 ] && [ $decision_points -le 50 ]; then
-        complexity_score=$((50 + decision_points))
-    elif [ $decision_points -gt 50 ]; then
-        complexity_score=$((100 - (decision_points - 50)))
-        [ $complexity_score -lt 20 ] && complexity_score=20
-    fi
-
-    local testing_score=0
-    [ $test_files -gt 0 ] && testing_score=$((50 + test_files * 10))
-    [ $testing_score -gt 100 ] && testing_score=100
-
-    local documentation_score=0
-    [ $comments_added -gt 0 ] && documentation_score=$((comments_added * 5))
-    [ $documentation_score -gt 100 ] && documentation_score=100
-
-    local error_score=0
-    [ $error_handling -gt 0 ] && error_score=$((error_handling * 10))
-    [ $error_score -gt 100 ] && error_score=100
-
-    # Overall score (weighted average)
-    local overall_score=$(( (size_score * 25 + complexity_score * 20 + testing_score * 25 + documentation_score * 15 + error_score * 15) / 100 ))
 
     # Output JSON for this session
     cat << EOF
@@ -170,14 +138,6 @@ analyze_patch() {
             "comments_added": $comments_added,
             "error_handling": $error_handling
         }
-    },
-    "scores": {
-        "size": $size_score,
-        "complexity": $complexity_score,
-        "testing": $testing_score,
-        "documentation": $documentation_score,
-        "error_handling": $error_score,
-        "overall": $overall_score
     }
 }
 EOF
@@ -220,112 +180,57 @@ echo "Generating reports..."
         fi
     done
 
-    echo '  ],'
-
-    # Add rankings (sorted by overall score)
-    echo '  "rankings": ['
-
-    # Create ranking data
-    declare -a RANKINGS
-    for ((i=0; i<SESSION_COUNT; i++)); do
-        session_id=$(basename "${PATCH_FILES[$i]}" .patch)
-        # Extract overall score using grep/sed (jq-free) with guard
-        if [ -f "${SESSION_DATA[$i]}" ]; then
-            overall=$(grep '"overall":' "${SESSION_DATA[$i]}" 2>/dev/null | head -1 | sed 's/.*: *\([0-9]*\).*/\1/')
-            overall="${overall:-0}"
-        else
-            overall="0"
-        fi
-        RANKINGS+=("$overall:$session_id")
-    done
-
-    # Sort rankings (descending by score)
-    IFS=$'\n' SORTED_RANKINGS=($(printf '%s\n' "${RANKINGS[@]}" | sort -t: -k1 -rn))
-    unset IFS
-
-    for ((i=0; i<${#SORTED_RANKINGS[@]}; i++)); do
-        score=$(echo "${SORTED_RANKINGS[$i]}" | cut -d: -f1)
-        session_id=$(echo "${SORTED_RANKINGS[$i]}" | cut -d: -f2)
-        rank=$((i + 1))
-
-        if [ $i -gt 0 ]; then echo '    ,'; fi
-        echo '    {"rank": '$rank', "session_id": "'$session_id'", "overall_score": '$score'}'
-    done
-
     echo '  ]'
     echo '}'
 } > "$REPORT_JSON"
 
+# Build session list for markdown report
+declare -a SESSION_LIST
+for ((i=0; i<SESSION_COUNT; i++)); do
+    session_id=$(basename "${PATCH_FILES[$i]}" .patch)
+    SESSION_LIST+=("$session_id")
+done
+
 # Generate Markdown report
 {
-    echo "# Crown Jules Comparison Report"
+    echo "# Crown Jules Metrics Report"
     echo ""
     echo "**Run ID:** \`$RUN_ID\`"
     echo "**Generated:** $(date)"
     echo "**Base branch:** \`$BASE_BRANCH\`"
     echo ""
 
-    echo "## Rankings"
+    echo "## Summary"
     echo ""
-    echo "| Rank | Session ID | Overall Score | Lines +/- | Files | Tests |"
-    echo "|------|------------|---------------|-----------|-------|-------|"
+    echo "| Session ID | Lines +/- | Files | Tests | Error Handling |"
+    echo "|------------|-----------|-------|-------|----------------|"
 
-    for ((i=0; i<${#SORTED_RANKINGS[@]}; i++)); do
-        score=$(echo "${SORTED_RANKINGS[$i]}" | cut -d: -f1)
-        session_id=$(echo "${SORTED_RANKINGS[$i]}" | cut -d: -f2)
-        rank=$((i + 1))
-
-        # Find the data file for this session
+    for session_id in "${SESSION_LIST[@]}"; do
         for data_file in "${SESSION_DATA[@]}"; do
             if grep -q "\"session_id\": \"$session_id\"" "$data_file"; then
                 lines_added=$(grep '"lines_added":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
                 lines_removed=$(grep '"lines_removed":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
                 files=$(grep '"files_changed":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
                 tests=$(grep '"test_files":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
+                error_handling=$(grep '"error_handling":' "$data_file" | tail -1 | sed 's/.*: *\([0-9]*\).*/\1/')
 
-                medal=""
-                [ $rank -eq 1 ] && medal="🥇 "
-                [ $rank -eq 2 ] && medal="🥈 "
-                [ $rank -eq 3 ] && medal="🥉 "
-
-                echo "| ${medal}${rank} | [$session_id](https://jules.google.com/session/$session_id) | **$score** | +$lines_added/-$lines_removed | $files | $tests |"
+                echo "| [$session_id](https://jules.google.com/session/$session_id) | +$lines_added/-$lines_removed | $files | $tests | $error_handling |"
                 break
             fi
         done
     done
 
     echo ""
-    echo "## Detailed Analysis"
+    echo "## Session Details"
     echo ""
 
-    for ((i=0; i<${#SORTED_RANKINGS[@]}; i++)); do
-        session_id=$(echo "${SORTED_RANKINGS[$i]}" | cut -d: -f2)
-        rank=$((i + 1))
-
+    for session_id in "${SESSION_LIST[@]}"; do
         for data_file in "${SESSION_DATA[@]}"; do
             if grep -q "\"session_id\": \"$session_id\"" "$data_file"; then
-                echo "### Rank #$rank: Session $session_id"
+                echo "### Session $session_id"
                 echo ""
                 echo "**Patch file:** \`$CROWN_JULES_DIR/$session_id.patch\`"
                 echo "**Jules URL:** https://jules.google.com/session/$session_id"
-                echo ""
-
-                # Extract and display scores
-                size_score=$(grep '"size":' "$data_file" | head -1 | sed 's/.*: *\([0-9]*\).*/\1/')
-                complexity_score=$(grep '"complexity":' "$data_file" | head -1 | sed 's/.*: *\([0-9]*\).*/\1/')
-                testing_score=$(grep '"testing":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
-                doc_score=$(grep '"documentation":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
-                error_score=$(grep '"error_handling":' "$data_file" | tail -1 | sed 's/.*: *\([0-9]*\).*/\1/')
-                overall=$(grep '"overall":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
-
-                echo "| Metric | Score |"
-                echo "|--------|-------|"
-                echo "| Size (25%) | $size_score |"
-                echo "| Complexity (20%) | $complexity_score |"
-                echo "| Testing (25%) | $testing_score |"
-                echo "| Documentation (15%) | $doc_score |"
-                echo "| Error Handling (15%) | $error_score |"
-                echo "| **Overall** | **$overall** |"
                 echo ""
 
                 # Extract change metrics
@@ -336,37 +241,31 @@ echo "Generating reports..."
                 modified=$(grep '"modified_files":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
                 deleted=$(grep '"deleted_files":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
 
-                echo "**Change Summary:**"
+                # Extract complexity metrics
+                decision_points=$(grep '"decision_points":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
+                func_count=$(grep '"function_count":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
+
+                # Extract pattern metrics
+                tests=$(grep '"test_files":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
+                comments=$(grep '"comments_added":' "$data_file" | sed 's/.*: *\([0-9]*\).*/\1/')
+                error_handling=$(grep '"error_handling":' "$data_file" | tail -1 | sed 's/.*: *\([0-9]*\).*/\1/')
+
+                echo "**Changes:**"
                 echo "- Lines: +$lines_added / -$lines_removed"
                 echo "- Files: $files total ($new_files new, $modified modified, $deleted deleted)"
+                echo ""
+                echo "**Complexity:** $decision_points decision points, $func_count functions"
+                echo ""
+                echo "**Patterns:** $tests test files, $comments comments, $error_handling error handling instances"
                 echo ""
                 break
             fi
         done
     done
 
-    echo "## Recommended Implementation"
-    echo ""
-
-    if [ ${#SORTED_RANKINGS[@]} -gt 0 ]; then
-        top_session=$(echo "${SORTED_RANKINGS[0]}" | cut -d: -f2)
-        top_score=$(echo "${SORTED_RANKINGS[0]}" | cut -d: -f1)
-
-        echo "**Session $top_session** with an overall score of **$top_score** is recommended."
-        echo ""
-        echo "To apply locally:"
-        echo "\`\`\`bash"
-        echo "git apply .crown-jules/$RUN_ID/$top_session.patch"
-        echo "\`\`\`"
-        echo ""
-        echo "To create a PR from Jules:"
-        echo "https://jules.google.com/session/$top_session"
-    fi
-
-    echo ""
     echo "---"
     echo ""
-    echo "Generated by Crown Jules comparison script"
+    echo "*Note: This report provides metrics only. Claude will evaluate and rank implementations based on correctness and adherence to the original request.*"
 
 } > "$REPORT_MD"
 
@@ -375,24 +274,15 @@ rm -rf "$TEMP_DIR"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Analysis complete!"
+echo "Metrics collected!"
 echo ""
 echo "Reports generated:"
 echo "  JSON: $REPORT_JSON"
 echo "  Markdown: $REPORT_MD"
 echo ""
-
-# Print quick summary
-echo "Quick Rankings:"
-for ((i=0; i<${#SORTED_RANKINGS[@]}; i++)); do
-    score=$(echo "${SORTED_RANKINGS[$i]}" | cut -d: -f1)
-    session_id=$(echo "${SORTED_RANKINGS[$i]}" | cut -d: -f2)
-    rank=$((i + 1))
-
-    medal=""
-    [ $rank -eq 1 ] && medal="🥇"
-    [ $rank -eq 2 ] && medal="🥈"
-    [ $rank -eq 3 ] && medal="🥉"
-
-    printf "%s #%d: Session %s (Score: %s)\n" "$medal" "$rank" "$session_id" "$score"
+echo "Sessions analyzed:"
+for session_id in "${SESSION_LIST[@]}"; do
+    echo "  - $session_id"
 done
+echo ""
+echo "Note: Claude will evaluate and rank implementations based on correctness."

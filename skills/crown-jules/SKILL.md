@@ -401,48 +401,76 @@ Waiting 30s for next poll... (Ctrl+C to stop)
    | **Complexity** | Decision points, max nesting depth, function count |
    | **Patterns** | Test files, type definitions, config changes, comments, error handling |
 
-   It calculates scores (0-100) for each implementation:
-
-   | Component | Weight | Criteria |
-   |-----------|--------|----------|
-   | Size | 25% | Penalize too small (<20 lines) or too large (>1000 lines) |
-   | Complexity | 20% | Reward moderate decision points (1-50) |
-   | Testing | 25% | Bonus for test files detected |
-   | Documentation | 15% | Bonus for comments added |
-   | Error handling | 15% | Bonus for try/catch, validation |
+   **Important:** The script collects metrics but does NOT rank implementations. You (Claude) will evaluate and rank them based on correctness.
 
 2. The script generates two reports in `.crown-jules/<run_id>/`:
-   - `report.json` - Machine-readable with full metrics and rankings
-   - `report.md` - Human-readable summary
+   - `report.json` - Machine-readable metrics data
+   - `report.md` - Human-readable metrics summary
 
-3. Read the generated reports:
+3. Read the generated reports and patch files:
    ```bash
-   cat .crown-jules/<run_id>/report.json  # For structured data
-   cat .crown-jules/<run_id>/report.md    # For readable summary
+   cat .crown-jules/<run_id>/report.md    # For metrics summary
+   cat .crown-jules/<run_id>/<session_id>.patch  # Read each patch to evaluate correctness
    ```
 
-### 4c. Present Results
+### 4c. Evaluate and Rank
 
-After the automated analysis, present results to the user:
+**This is where you (Claude) evaluate the implementations.** The script only collected metrics - you must read each patch and rank them based on correctness.
 
-1. **Summary table** with rankings and scores from the report
+**Evaluation criteria (in order of importance):**
 
-2. **Recommended implementation** with justification:
-   - Why it scored highest
-   - Key strengths from metrics
-   - Any concerns or tradeoffs
+1. **Correctness (primary)**: Does it correctly implement what was requested?
+   - Does it address the core requirements from the original plan?
+   - Does it actually work as expected?
+   - Are there bugs, missing pieces, or misunderstandings?
 
-3. **Detailed breakdown** of top 2-3 implementations:
-   - Score breakdown by category
-   - Change summary (lines, files)
-   - Notable patterns detected
+2. **Completeness**: Did it implement everything asked for?
+   - All features from the plan included?
+   - Edge cases handled appropriately?
 
-4. **Cross-implementation insights**:
-   - How approaches differed
-   - Common patterns across implementations
-   - Unique solutions worth noting
+3. **Code quality (secondary)**: Is it well-implemented?
+   - Follows project conventions
+   - Reasonable approach
+   - No obvious issues
 
-5. **Next steps**:
+**Do NOT over-weight:**
+- Amount of code (more isn't better, less isn't better)
+- Number of tests (nice to have, not required)
+- Documentation/comments (nice to have, not required)
+- Complexity metrics (informational only)
+
+**Steps:**
+
+1. **Read each patch file** to understand what each implementation actually does:
+   ```bash
+   cat .crown-jules/<run_id>/<session_id>.patch
+   ```
+
+2. **Compare each implementation** against the original plan and success criteria from Phase 1.
+
+3. **Rank the implementations** based primarily on correctness and completeness.
+
+### 4d. Present Results
+
+After your evaluation, present results to the user:
+
+1. **Your rankings** with justification for each:
+   - Why #1 is best (what it got right)
+   - What each implementation did differently
+   - Any issues or gaps you noticed
+
+2. **Metrics table** (informational, from the report):
+
+| Session | Lines +/- | Files | Tests |
+|---------|-----------|-------|-------|
+| [abc123](url) | +245/-12 | 5 | 2 |
+| [def456](url) | +189/-8 | 4 | 1 |
+
+3. **Recommendation** with clear reasoning:
+   - What made this implementation the best fit for the request
+   - Any tradeoffs the user should know about
+
+4. **Next steps**:
    - How to apply locally: `git apply .crown-jules/<run_id>/<session_id>.patch`
    - Link to create PR from Jules interface
 
@@ -450,30 +478,30 @@ Example output format:
 ```
 # Crown Jules Results
 
-## Rankings
+## My Evaluation
 
-| Rank | Session | Score | Lines +/- | Files | Tests |
-|------|---------|-------|-----------|-------|-------|
-| 🥇 1 | [abc123](url) | **78** | +245/-12 | 5 | 2 |
-| 🥈 2 | [def456](url) | **65** | +189/-8 | 4 | 1 |
-| 🥉 3 | [ghi789](url) | **52** | +312/-45 | 7 | 0 |
+After reviewing all patches against the original request to "add dark mode toggle":
 
-## Recommended: Session abc123
+### 🥇 #1: Session abc123
+**Best implementation** - Correctly adds toggle to settings, persists preference to localStorage, and applies theme immediately on change. Clean implementation that does exactly what was asked.
 
-**Overall Score: 78**
+### 🥈 #2: Session def456
+Good attempt but missing localStorage persistence - theme resets on page reload.
 
-| Metric | Score |
-|--------|-------|
-| Size | 72 |
-| Complexity | 68 |
-| Testing | 100 |
-| Documentation | 60 |
-| Error Handling | 70 |
+### 🥉 #3: Session ghi789
+Over-engineered - added a full theming system with 5 color schemes when only dark/light was requested. Also introduced a bug in the CSS that breaks mobile layout.
 
-**Why this is the best choice:**
-- Highest testing score (added 2 test files)
-- Moderate complexity with good error handling
-- Clean, focused changes
+## Metrics (informational)
+
+| Session | Lines +/- | Files | Tests |
+|---------|-----------|-------|-------|
+| [abc123](url) | +245/-12 | 5 | 2 |
+| [def456](url) | +189/-8 | 4 | 1 |
+| [ghi789](url) | +512/-45 | 12 | 3 |
+
+## Recommendation
+
+**Session abc123** is the clear winner - it does exactly what was asked, nothing more, nothing less.
 
 **To apply:** `git apply .crown-jules/<run_id>/abc123.patch`
 **To create PR:** https://jules.google.com/session/abc123
