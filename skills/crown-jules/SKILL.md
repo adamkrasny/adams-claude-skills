@@ -120,22 +120,38 @@ When resuming, read the parent task metadata to determine current state and cont
    - Are there any constraints or preferences?
    - Which parts of the codebase are involved?
 
-4. Inspect relevant files in the project:
-   - Read README, CONTRIBUTING, or similar docs
-   - Look at the files/modules that will be modified
-   - Understand existing patterns and conventions
+4. **Use the Plan agent** to explore the codebase and design the implementation plan:
 
-5. Synthesize a **high-level plan** that includes:
-   - **Goals**: What we're trying to achieve (2-3 bullet points)
-   - **Approach**: How we'll achieve it (3-5 bullet points)
-   - **Key files**: Which files will likely be created/modified
-   - **Success criteria**: How we'll know it's done correctly
+   ```
+   Task:
+     subagent_type: "Plan"
+     prompt: |
+       Explore this codebase and create an implementation plan for the following task:
 
-6. Present the plan to the user and get their approval before proceeding.
+       ## Task
+       [User's idea/request]
 
-7. Generate a unique run ID (first 8 characters of a UUID or similar short random string).
+       ## Context from user
+       [Any clarifications gathered in step 3]
 
-8. Create the workflow tracking task:
+       ## What I need from you
+       1. Inspect relevant files (README, existing modules, patterns)
+       2. Identify which files will need to be created or modified
+       3. Understand existing conventions and patterns
+       4. Create a high-level implementation plan with:
+          - **Goals**: What we're trying to achieve (2-3 bullet points)
+          - **Approach**: How we'll achieve it (3-5 bullet points)
+          - **Key files**: Which files will likely be created/modified
+          - **Success criteria**: How we'll know it's done correctly
+
+       Return the plan in a structured format I can present to the user.
+   ```
+
+5. Review the Plan agent's output and present the plan to the user. Get their approval before proceeding.
+
+6. Generate a unique run ID (first 8 characters of a UUID or similar short random string).
+
+7. Create the workflow tracking task:
    ```
    TaskCreate:
      subject: "Crown Jules: [brief description]"
