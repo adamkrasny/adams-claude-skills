@@ -226,6 +226,7 @@ This variety tests whether more guidance helps or hinders the agents.
    - Make reasonable decisions autonomously and proceed
    - If you encounter ambiguity, choose the most sensible option and document your choice
    - Complete the full implementation without stopping
+   - Do NOT create or submit a pull request - just commit your changes
 
    ## Verification Requirements
    Before marking your work as complete, you MUST verify your changes pass all checks:
@@ -249,6 +250,7 @@ This variety tests whether more guidance helps or hinders the agents.
    - Do NOT wait for user feedback at any point
    - Make reasonable decisions autonomously and proceed
    - Complete the full implementation without stopping
+   - Do NOT create or submit a pull request - just commit your changes
 
    ## Verification Requirements
    Before marking your work as complete, verify your changes pass all checks:
@@ -274,6 +276,7 @@ This variety tests whether more guidance helps or hinders the agents.
    - Make reasonable decisions autonomously and proceed
    - If you encounter ambiguity, choose the most sensible option and document your choice
    - Complete the full implementation without stopping
+   - Do NOT create or submit a pull request - just commit your changes
 
    ## Verification Requirements
    Before marking your work as complete, verify your changes pass all checks:
