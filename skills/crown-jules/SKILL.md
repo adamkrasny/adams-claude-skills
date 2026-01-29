@@ -168,7 +168,25 @@ When resuming, read the parent task metadata to determine current state and cont
 
 **Steps:**
 
-1. Ensure `.crown-jules` is in `.gitignore`:
+1. Capture the current state of main branch before dispatch:
+
+   Jules agents always work from the main branch on GitHub. To ensure we can apply their changes without conflicts later, we need to capture the exact state of main at dispatch time.
+
+   ```bash
+   # Ensure we're on main and have latest changes
+   git checkout main
+   git pull origin main
+
+   # Create the run directory
+   mkdir -p .crown-jules/<run_id>
+
+   # Create worktree from current main state
+   git worktree add -b crown-jules/<run_id> .crown-jules/<run_id>/worktree main
+   ```
+
+   This worktree preserves the exact commit that Jules agents will be working from. The generate-patches.sh script will use this existing worktree later.
+
+2. Ensure `.crown-jules` is in `.gitignore`:
    ```bash
    # Check if .gitignore exists and contains .crown-jules (with or without trailing slash)
    grep -qE "^\.crown-jules/?$" .gitignore 2>/dev/null
@@ -186,13 +204,13 @@ When resuming, read the parent task metadata to determine current state and cont
      ```
    - Inform the user: "Added `.crown-jules/` to `.gitignore` to prevent workflow files from being committed."
 
-2. Auto-detect the repository:
+3. Auto-detect the repository:
    ```bash
    git remote get-url origin
    ```
    Parse the output to extract `owner/repo` format (handle both HTTPS and SSH URLs).
 
-3. Build the enhanced prompt for Jules. The prompt should include:
+4. Build the enhanced prompt for Jules. The prompt should include:
 
    ```
    [Short descriptive title - e.g., "Add dark mode toggle to settings page"]
@@ -226,7 +244,7 @@ When resuming, read the parent task metadata to determine current state and cont
    4. Do NOT submit code that fails verification
    ```
 
-4. Execute the Jules command:
+5. Execute the Jules command:
    ```bash
    npx -y @google/jules@latest new --repo <owner/repo> --parallel <N> "<prompt>"
    ```
@@ -243,7 +261,7 @@ When resuming, read the parent task metadata to determine current state and cont
    - Inform the user: "X of Y sessions created due to server issues. Proceeding with X agents."
    - If zero sessions were created, wait 30 seconds and retry the parallel command once
 
-5. Parse the output to extract session IDs and URLs. Expected format:
+6. Parse the output to extract session IDs and URLs. Expected format:
    ```
    N parallel sessions created successfully:
    Task: <prompt>
@@ -253,7 +271,7 @@ When resuming, read the parent task metadata to determine current state and cont
      URL: https://jules.google.com/session/<session_id>
    ```
 
-6. Update the workflow task with session information:
+7. Update the workflow task with session information:
    ```
    TaskUpdate:
      metadata: {
@@ -268,7 +286,7 @@ When resuming, read the parent task metadata to determine current state and cont
      }
    ```
 
-7. Inform the user that agents have been dispatched and provide links to all sessions.
+8. Inform the user that agents have been dispatched and provide links to all sessions.
 
 ---
 

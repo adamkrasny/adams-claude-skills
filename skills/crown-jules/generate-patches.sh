@@ -1,7 +1,7 @@
 #!/bin/bash
 # Crown Jules - Patch Generation Script
 # Usage: ./generate-patches.sh <run_id> <base_branch> <session_id1> <session_id2> ...
-# Creates a single worktree, applies each session's changes, generates patch files, then cleans up
+# Uses the existing worktree created during dispatch, generates patch files, then cleans up
 # Compatible with bash 3.2+ (macOS default)
 
 set -e
@@ -30,21 +30,28 @@ CROWN_JULES_DIR="$REPO_ROOT/.crown-jules/$RUN_ID"
 WORKTREE_BRANCH="crown-jules/$RUN_ID"
 WORKTREE_PATH="$CROWN_JULES_DIR/worktree"
 
-# Verify base branch exists
-if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
-    echo "ERROR: Base branch '$BASE_BRANCH' does not exist"
+# Verify worktree exists (should have been created during dispatch phase)
+if [ ! -d "$WORKTREE_PATH" ]; then
+    echo "ERROR: Worktree not found at $WORKTREE_PATH"
+    echo "The worktree should have been created during the dispatch phase."
+    echo "Expected: git worktree add -b $WORKTREE_BRANCH $WORKTREE_PATH main"
     exit 1
 fi
 
-# Check for clean working tree
+# Verify the worktree branch exists
+if ! git rev-parse --verify "$WORKTREE_BRANCH" >/dev/null 2>&1; then
+    echo "ERROR: Worktree branch '$WORKTREE_BRANCH' does not exist"
+    exit 1
+fi
+
+# Check for clean working tree in main repo
 if [ -n "$(git status --porcelain)" ]; then
     echo "ERROR: Working tree is not clean. Commit or stash changes first."
     exit 1
 fi
 
-# Create output directory
-mkdir -p "$CROWN_JULES_DIR"
 echo "Run ID: $RUN_ID"
+echo "Using existing worktree at $WORKTREE_PATH"
 echo "Generating patches for $SESSION_COUNT sessions..."
 echo ""
 
@@ -62,16 +69,9 @@ cleanup_worktree() {
 # Set trap to cleanup on exit (success or failure)
 trap cleanup_worktree EXIT
 
-# Create single worktree from base branch
-echo "Creating worktree on branch $WORKTREE_BRANCH..."
-if ! git worktree add -b "$WORKTREE_BRANCH" "$WORKTREE_PATH" "$BASE_BRANCH" 2>/dev/null; then
-    # Branch might exist from a previous failed run, try to clean it up
-    git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
-    if ! git worktree add -b "$WORKTREE_BRANCH" "$WORKTREE_PATH" "$BASE_BRANCH" 2>/dev/null; then
-        echo "ERROR: Could not create worktree"
-        exit 1
-    fi
-fi
+# Reset worktree to clean state before starting
+git -C "$WORKTREE_PATH" reset --hard HEAD 2>/dev/null
+git -C "$WORKTREE_PATH" clean -fd 2>/dev/null
 echo ""
 
 # Track results
