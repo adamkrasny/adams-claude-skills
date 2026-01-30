@@ -296,3 +296,20 @@ jules_api_extract_patch() {
         | .artifact.changeSet.gitPatch.unidiffPatch // empty
     ' 2>/dev/null
 }
+
+# Extract branch name from session response
+# Arguments:
+#   $1 - Session JSON response
+# Returns: Branch name if available, or empty
+jules_api_extract_branch() {
+    local session_json="$1"
+
+    # Try multiple possible locations for branch name
+    # The API may return it in different fields depending on session state
+    echo "$session_json" | jq -r '
+        .workingBranch //
+        .sourceContext.githubRepoContext.workingBranch //
+        .result.workingBranch //
+        empty
+    ' 2>/dev/null
+}

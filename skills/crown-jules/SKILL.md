@@ -62,7 +62,7 @@ This skill includes several scripts for workflow automation:
 # Poll sessions until completion
 ~/.claude/skills/crown-jules/poll-sessions.sh <session_id1> <session_id2> ...
 
-# Generate patch files from completed sessions
+# Generate patch files from completed sessions (auto-fallback to git if API fails)
 ~/.claude/skills/crown-jules/generate-patches.sh <run_id> <session_id1> <session_id2> ...
 
 # Analyze patches and generate comparison report
@@ -383,20 +383,23 @@ Waiting 30s for next poll... (Ctrl+C to stop)
    ```
 
    The script will:
-   - Fetch activities for each session via the Jules API
-   - Extract the unified diff patch from the `changeSet.gitPatch.unidiffPatch` field
+   - First try to fetch patches via the Jules API (`activities` endpoint)
+   - If API fails, automatically fall back to git-based patch generation:
+     - Fetches the session details to get the working branch name
+     - Uses `git fetch` + `git diff` to generate the patch locally
    - Save patches to `.crown-jules/<run_id>/<session_id>.patch`
-   - Report success/failure for each session
+   - Report success/failure and which method was used for each session
 
 3. Verify patches were created:
    ```bash
    ls -la .crown-jules/<run_id>/*.patch
    ```
 
-4. **If the script fails or exits with an error:**
-   - Do NOT fall back to manual patch generation
-   - STOP and inform the user of the error
-   - Ask how they want to proceed
+4. **If the script fails completely (all sessions failed):**
+   - The script will output helpful error messages and session URLs
+   - Inform the user which sessions failed and why
+   - Provide the Jules web URLs so they can manually review implementations
+   - Ask if they want to continue with manual evaluation or abort
 
 ### 4b. Run Automated Analysis
 
@@ -609,7 +612,7 @@ This structure allows multiple Crown Jules workflows to run in parallel on the s
 - **Source not found (400 error on session creation)**: The GitHub repository hasn't been connected to Jules. Direct user to connect it at https://jules.google.com first.
 - **No git repository**: Skill requires being run inside a git repository
 - **All agents failed**: Report failure, provide links to sessions for manual inspection
-- **No patch in activities**: The session may not have generated changes - check the Jules web UI
+- **No patch in activities**: Script automatically tries git fallback; if that also fails, check the Jules web UI
 - **Network issues during polling**: Retry with backoff, inform user if persistent
 - **Rate limiting (429 errors)**: Scripts handle this automatically with exponential backoff
 - **Session stuck in Awaiting User Feedback for 5+ poll cycles**: Notify user they may need to check the Jules web UI
@@ -622,9 +625,15 @@ This structure allows multiple Crown Jules workflows to run in parallel on the s
 - Check your network connection
 
 **If no patches are found:**
-- Verify the session completed successfully (not failed)
+- The script automatically tries a git-based fallback when the API fails
+- If both methods fail, verify the session completed successfully (not failed)
 - Check the Jules web UI to see if the agent made changes
 - Some sessions may complete without making changes if the task was unclear
+
+**If you see "used git fallback" in patch generation:**
+- This is normal - the Jules API activities endpoint sometimes doesn't return patches
+- The script successfully fetched the branch and generated patches via `git diff`
+- These patches are equivalent to what the API would have returned
 
 **If you see authentication errors:**
 - Verify `JULES_API_KEY` is set: `echo $JULES_API_KEY`
