@@ -47,6 +47,7 @@ echo ""
 # Track results
 success_count=0
 failed_count=0
+no_changes_count=0
 api_failed_count=0
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -58,17 +59,20 @@ try_git_fallback() {
     local session_id="$1"
     local patch_file="$2"
 
-    # First, try to get the branch name from the session details
+    local branch_name=""
+
+    # First, try to get the branch name from the session details via API
     local session_response
     session_response=$(jules_api_get_session "$session_id" 2>/dev/null)
 
-    if [ -z "$session_response" ]; then
-        echo ""
-        return 1
+    if [ -n "$session_response" ]; then
+        branch_name=$(jules_api_extract_branch "$session_response")
     fi
 
-    local branch_name
-    branch_name=$(jules_api_extract_branch "$session_response")
+    # If API didn't return branch name, try to find it by session ID pattern
+    if [ -z "$branch_name" ]; then
+        branch_name=$(jules_api_find_branch_by_session "$session_id")
+    fi
 
     if [ -z "$branch_name" ]; then
         echo ""
@@ -96,8 +100,9 @@ try_git_fallback() {
         return 0
     fi
 
-    echo ""
-    return 1
+    # Branch exists but no diff - session completed without changes
+    echo "NO_CHANGES:$branch_name"
+    return 2
 }
 
 # Process each session
@@ -122,10 +127,18 @@ for session_id in "${SESSION_IDS[@]}"; do
     else
         # API failed or no patch - try git fallback
         api_failed_count=$((api_failed_count + 1))
-        branch_name=$(try_git_fallback "$session_id" "$patch_file")
+        fallback_result=$(try_git_fallback "$session_id" "$patch_file")
+        fallback_exit=$?
 
-        if [ -n "$branch_name" ] && [ -f "$patch_file" ]; then
-            method="git ($branch_name)"
+        if [ $fallback_exit -eq 0 ] && [ -n "$fallback_result" ] && [ -f "$patch_file" ]; then
+            method="git ($fallback_result)"
+        elif [ $fallback_exit -eq 2 ]; then
+            # Session completed but made no changes
+            branch_name="${fallback_result#NO_CHANGES:}"
+            result="NO CHANGES: Session completed but made no code changes (branch: $branch_name)"
+            printf "%-24s ⊘ %s\n" "$session_id" "$result"
+            no_changes_count=$((no_changes_count + 1))
+            continue
         else
             result="FAILED: No patch from API and git fallback failed"
             printf "%-24s ✗ %s\n" "$session_id" "$result"
@@ -148,9 +161,13 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Summary
-echo "Summary: $success_count succeeded, $failed_count failed out of $SESSION_COUNT total"
+echo "Summary: $success_count succeeded, $failed_count failed, $no_changes_count no-changes out of $SESSION_COUNT total"
 if [ $api_failed_count -gt 0 ] && [ $success_count -gt 0 ]; then
     echo "  Note: $api_failed_count session(s) used git fallback (API activities unavailable)"
+fi
+if [ $no_changes_count -gt 0 ]; then
+    echo "  Note: $no_changes_count session(s) completed but made no code changes"
+    echo "        (Jules may have interpreted the task differently or decided no changes were needed)"
 fi
 echo ""
 

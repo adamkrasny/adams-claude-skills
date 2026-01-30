@@ -126,8 +126,13 @@ while [ "$all_done" = false ]; do
     # If not all done, wait and poll again
     if [ "$all_done" = false ]; then
         echo ""
-        echo "Poll #$poll_count - Waiting ${POLL_INTERVAL}s... (Ctrl+C to stop)"
-        sleep $POLL_INTERVAL
+        # Show progress dots during the wait to indicate we're still working
+        printf "Poll #$poll_count - Waiting ${POLL_INTERVAL}s"
+        for ((s=0; s<POLL_INTERVAL; s+=5)); do
+            sleep 5
+            printf "."
+        done
+        echo " (Ctrl+C to stop)"
     fi
 done
 

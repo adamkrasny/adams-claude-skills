@@ -81,7 +81,7 @@ The `run_id` is a unique identifier for each Crown Jules workflow run. This allo
 This skill executes a 5-phase workflow:
 
 1. **Planning** - Collaborate with user to refine their idea into a clear plan
-2. **Dispatch** - Send the task to 4 parallel Jules agents with different prompt strategies
+2. **Dispatch** - Send the task to 3 parallel Jules agents with different prompt strategies
 3. **Polling** - Monitor progress until all agents complete
 4. **Evaluation** - Generate patches, perform deep analysis, rank results
 5. **Cleanup** - Remove patch files and reports
@@ -169,14 +169,14 @@ When resuming, read the parent task metadata to determine current state and cont
 
 ## Phase 2: Dispatch
 
-**Goal:** Send the task to 4 Jules agents using different prompt strategies to test which approach yields the best results.
+**Goal:** Send the task to 3 Jules agents using different prompt strategies to test which approach yields the best results.
 
 **Prompt Strategy:**
-- **2 agents** receive the **detailed enhanced prompt** (full plan with step-by-step guidance)
+- **1 agent** receives the **detailed enhanced prompt** (full plan with step-by-step guidance)
 - **1 agent** receives the **original user prompt** (exactly as provided, unmodified)
 - **1 agent** receives a **high-level enhanced prompt** (goals and success criteria only, no detailed plan)
 
-This variety tests whether more guidance helps or hinders the agents.
+This variety tests whether more guidance helps or hinders the agents, while keeping API usage efficient.
 
 **Steps:**
 
@@ -264,8 +264,8 @@ This variety tests whether more guidance helps or hinders the agents.
 4. Execute session creation for each prompt type (run these sequentially, not in parallel):
 
    ```bash
-   # 2 agents with detailed prompt
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 2 "<Prompt A>" main "Detailed: <short task description>"
+   # 1 agent with detailed prompt
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt A>" main "Detailed: <short task description>"
 
    # 1 agent with original prompt
    ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt B>" main "Original: <short task description>"
@@ -295,15 +295,14 @@ This variety tests whether more guidance helps or hinders the agents.
        repo: "<owner/repo>",
        sessions: [
          {id: "<id1>", url: "<url1>", status: "Started", promptType: "detailed"},
-         {id: "<id2>", url: "<url2>", status: "Started", promptType: "detailed"},
-         {id: "<id3>", url: "<url3>", status: "Started", promptType: "original"},
-         {id: "<id4>", url: "<url4>", status: "Started", promptType: "high-level"}
+         {id: "<id2>", url: "<url2>", status: "Started", promptType: "original"},
+         {id: "<id3>", url: "<url3>", status: "Started", promptType: "high-level"}
        ]
      }
    ```
 
 7. Inform the user that agents have been dispatched with the prompt strategy:
-   - 2 agents with **detailed prompt** (full plan)
+   - 1 agent with **detailed prompt** (full plan)
    - 1 agent with **original prompt** (user's exact words)
    - 1 agent with **high-level prompt** (goals only)
 
@@ -321,7 +320,7 @@ This variety tests whether more guidance helps or hinders the agents.
 
 1. Run the polling script with all session IDs:
    ```bash
-   ~/.claude/skills/crown-jules/poll-sessions.sh <session_id_1> <session_id_2> <session_id_3> <session_id_4>
+   ~/.claude/skills/crown-jules/poll-sessions.sh <session_id_1> <session_id_2> <session_id_3>
    ```
 
    The script will:
@@ -359,10 +358,9 @@ Session ID             Status                   URL
 15117933240154076744   In Progress              https://jules.google.com/session/15117933240154076744
 7829403212940903160    Completed ✓              https://jules.google.com/session/7829403212940903160
 18002240231784670042   Planning                 https://jules.google.com/session/18002240231784670042
-11394807168730841386   Awaiting Plan Approval   https://jules.google.com/session/11394807168730841386
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Waiting 30s for next poll... (Ctrl+C to stop)
+Poll #3 - Waiting 30s... (Ctrl+C to stop)
 ```
 
 ---
@@ -395,7 +393,15 @@ Waiting 30s for next poll... (Ctrl+C to stop)
    ls -la .crown-jules/<run_id>/*.patch
    ```
 
-4. **If the script fails completely (all sessions failed):**
+4. **Handle patch generation results:**
+
+   **If some patches succeeded but others failed:**
+   - Inform the user which sessions have patches and which don't
+   - Ask: "Continue evaluation with N available patches, or would you like to investigate the failed sessions first?"
+   - If a session shows "completed but made no changes", explain that Jules may have interpreted the task differently or decided no changes were needed
+   - Provide links to failed sessions so user can review in the Jules web UI
+
+   **If ALL sessions failed:**
    - The script will output helpful error messages and session URLs
    - Inform the user which sessions failed and why
    - Provide the Jules web URLs so they can manually review implementations
@@ -509,10 +515,7 @@ After reviewing all patches against the original request to "add dark mode toggl
 ### #2: Session def456 (high-level prompt)
 Good attempt but missing localStorage persistence - theme resets on page reload.
 
-### #3: Session ghi789 (detailed prompt)
-Similar to #1 but chose a different CSS approach that's slightly more complex.
-
-### #4: Session jkl012 (original prompt)
+### #3: Session jkl012 (original prompt)
 Over-engineered - added a full theming system with 5 color schemes when only dark/light was requested. Without the specific guidance, the agent interpreted the request too broadly.
 
 ## Metrics (informational)
@@ -521,12 +524,11 @@ Over-engineered - added a full theming system with 5 color schemes when only dar
 |---------|-------------|-----------|-------|-------|
 | [abc123](url) | detailed | +245/-12 | 5 | 2 |
 | [def456](url) | high-level | +189/-8 | 4 | 1 |
-| [ghi789](url) | detailed | +267/-15 | 5 | 2 |
 | [jkl012](url) | original | +512/-45 | 12 | 3 |
 
 ## Prompt Strategy Insights
 
-In this run, the **detailed prompts** performed best - the explicit plan helped agents stay focused on exactly what was needed. The **original prompt** led to over-engineering, suggesting that more guidance was beneficial for this task. The **high-level prompt** found a middle ground but missed some details.
+In this run, the **detailed prompt** performed best - the explicit plan helped the agent stay focused on exactly what was needed. The **original prompt** led to over-engineering, suggesting that more guidance was beneficial for this task. The **high-level prompt** found a middle ground but missed some details.
 
 ## Recommendation
 

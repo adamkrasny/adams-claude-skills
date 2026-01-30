@@ -313,3 +313,36 @@ jules_api_extract_branch() {
         empty
     ' 2>/dev/null
 }
+
+# Find a Jules branch by session ID using naming conventions
+# Arguments:
+#   $1 - Session ID
+# Returns: Branch name if found, or empty
+# Jules creates branches with patterns like:
+#   - feature-<name>-<session_id>
+#   - <name>-<session_id>
+jules_api_find_branch_by_session() {
+    local session_id="$1"
+
+    # Fetch all remote branches
+    git fetch --all --quiet 2>/dev/null
+
+    # Search for branches ending with the session ID
+    local branch
+    branch=$(git branch -r 2>/dev/null | grep -E "[/-]${session_id}$" | head -1 | sed 's/^[[:space:]]*//' | sed 's/^origin\///')
+
+    if [ -n "$branch" ]; then
+        echo "$branch"
+        return 0
+    fi
+
+    # Also check for branches containing the session ID anywhere
+    branch=$(git branch -r 2>/dev/null | grep "$session_id" | head -1 | sed 's/^[[:space:]]*//' | sed 's/^origin\///')
+
+    if [ -n "$branch" ]; then
+        echo "$branch"
+        return 0
+    fi
+
+    return 1
+}
