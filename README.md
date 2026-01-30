@@ -15,9 +15,34 @@ skills/
 
 ## Skills
 
-| Skill | Description |
-|-------|-------------|
-| [crown-jules](skills/crown-jules/) | Orchestrate parallel Jules agents to implement a feature, then compare and rank results |
+### [crown-jules](skills/crown-jules/)
+
+Orchestrate multiple Jules AI agents working in parallel on the same task, then compare their implementations to find the best solution.
+
+**Trigger phrases:** `crown jules`, `compare jules implementations`, `jules compare`, `parallel jules`, `have multiple agents try this`, `let jules compete`
+
+**Prerequisites:**
+- `JULES_API_KEY` environment variable set
+- GitHub repository connected to Jules via [jules.google.com](https://jules.google.com)
+- `curl` and `jq` installed
+
+**Workflow:**
+1. **Planning** - Collaborate to refine idea into actionable plan
+2. **Dispatch** - Send task to 4 parallel Jules agents with different prompt strategies
+3. **Polling** - Monitor progress until all agents complete
+4. **Evaluation** - Generate patches, analyze, and rank results
+5. **Cleanup** - Remove temporary files
+
+**Prompt Strategy:**
+- 2 agents with **detailed prompt** (full plan with step-by-step guidance)
+- 1 agent with **original prompt** (user's exact words, unmodified)
+- 1 agent with **high-level prompt** (goals and success criteria only)
+
+**Example usage:**
+```
+/crown-jules Add a dark mode toggle to the settings page
+/crown-jules Implement user authentication with JWT
+```
 
 ## Creating a New Skill
 
