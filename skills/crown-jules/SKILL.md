@@ -218,6 +218,17 @@ This variety tests whether more guidance helps or hinders the agents.
 
    ## Success Criteria
    [List from the plan]
+
+   ## Instructions
+   - Do NOT ask questions or request clarification
+   - Do NOT wait for user feedback at any point
+   - Make reasonable decisions autonomously and proceed
+
+   ## Verification
+   Before marking your work as complete, verify your changes pass all checks:
+   1. If package.json contains a "verify" script, run: npm run verify
+   2. Otherwise, run available linting/type-checking
+   3. Fix any errors before completing
    ```
 
    **Prompt B: Original User Prompt** (used by 1 agent)
@@ -237,6 +248,17 @@ This variety tests whether more guidance helps or hinders the agents.
 
    ## Success Criteria
    [List from the plan]
+
+   ## Instructions
+   - Do NOT ask questions or request clarification
+   - Do NOT wait for user feedback at any point
+   - Make reasonable decisions autonomously and proceed
+
+   ## Verification
+   Before marking your work as complete, verify your changes pass all checks:
+   1. If package.json contains a "verify" script, run: npm run verify
+   2. Otherwise, run available linting/type-checking
+   3. Fix any errors before completing
    ```
 
 4. Execute session creation for each prompt type (run these sequentially, not in parallel):
