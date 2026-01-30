@@ -218,48 +218,14 @@ This variety tests whether more guidance helps or hinders the agents.
 
    ## Success Criteria
    [List from the plan]
-
-   ## Important Instructions
-   - You are operating in NON-INTERACTIVE mode
-   - Do NOT ask questions or request clarification
-   - Do NOT wait for user feedback at any point
-   - Make reasonable decisions autonomously and proceed
-   - If you encounter ambiguity, choose the most sensible option and document your choice
-   - Complete the full implementation without stopping
-   - Do NOT create or submit a pull request - just commit your changes
-
-   ## Verification Requirements
-   Before marking your work as complete, you MUST verify your changes pass all checks:
-   1. If package.json contains a "verify" script, run: npm run verify
-   2. Otherwise, run all available linting and type-checking:
-      - npm run lint (if available)
-      - npm run typecheck (if available)
-      - npm run type-check (if available)
-      - npm run check (if available)
-   3. Fix any errors before completing
-   4. Do NOT submit code that fails verification
    ```
 
    **Prompt B: Original User Prompt** (used by 1 agent)
 
-   **CRITICAL:** Use the `originalPrompt` saved in Phase 1 metadata - the user's EXACT words before any planning or clarification. Do NOT use the refined/expanded version.
+   **CRITICAL:** Use the `originalPrompt` saved in Phase 1 metadata - the user's EXACT words before any planning or clarification. Do NOT use the refined/expanded version. Do NOT add any additional instructions.
 
    ```
    [originalPrompt from metadata - e.g., "Implement the next feature in @docs/FUTURE_IDEAS.md"]
-
-   ## Important Instructions
-   - You are operating in NON-INTERACTIVE mode
-   - Do NOT ask questions or request clarification
-   - Do NOT wait for user feedback at any point
-   - Make reasonable decisions autonomously and proceed
-   - Complete the full implementation without stopping
-   - Do NOT create or submit a pull request - just commit your changes
-
-   ## Verification Requirements
-   Before marking your work as complete, verify your changes pass all checks:
-   1. If package.json contains a "verify" script, run: npm run verify
-   2. Otherwise, run available linting/type-checking
-   3. Fix any errors before completing
    ```
 
    **Prompt C: High-Level Enhanced Prompt** (used by 1 agent)
@@ -271,21 +237,6 @@ This variety tests whether more guidance helps or hinders the agents.
 
    ## Success Criteria
    [List from the plan]
-
-   ## Important Instructions
-   - You are operating in NON-INTERACTIVE mode
-   - Do NOT ask questions or request clarification
-   - Do NOT wait for user feedback at any point
-   - Make reasonable decisions autonomously and proceed
-   - If you encounter ambiguity, choose the most sensible option and document your choice
-   - Complete the full implementation without stopping
-   - Do NOT create or submit a pull request - just commit your changes
-
-   ## Verification Requirements
-   Before marking your work as complete, verify your changes pass all checks:
-   1. If package.json contains a "verify" script, run: npm run verify
-   2. Otherwise, run available linting/type-checking
-   3. Fix any errors before completing
    ```
 
 4. Execute session creation for each prompt type (run these sequentially, not in parallel):
