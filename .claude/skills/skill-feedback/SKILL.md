@@ -36,15 +36,16 @@ Analyzes past Claude conversations to identify issues and improvement opportunit
 
 ### Phase 2: Identification
 
-1. For each session entry in the index, grep the JSONL file for this pattern:
+1. Aggregate all session entries from the project index(es) discovered in Phase 1
+2. Sort sessions by modified date (most recent first)
+3. Take the first N sessions (where N = `--limit`, default 5)
+4. For each of these N sessions only, grep the JSONL file for this pattern:
    ```
    <command-name>/skill-name</command-name>
    ```
    For example, to find `crown-jules` invocations: `<command-name>/crown-jules</command-name>`
    This indicates the skill was invoked in that conversation.
-
-2. Collect matching sessions, sorted by modified date (most recent first)
-3. Limit results to `--limit` conversations (default: 5)
+5. Return sessions where matches were found (may be fewer than N if skill wasn't used in all sessions)
 
 ### Phase 3: Analysis
 
