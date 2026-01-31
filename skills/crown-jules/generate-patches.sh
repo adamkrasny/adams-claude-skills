@@ -55,15 +55,21 @@ printf "%-24s %-50s\n" "Session ID" "Result"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Helper function to try git diff fallback
+# Arguments:
+#   $1 - Session ID
+#   $2 - Patch file path
+#   $3 - Session response JSON (optional, to avoid redundant API call)
 try_git_fallback() {
     local session_id="$1"
     local patch_file="$2"
+    local session_response="$3"
 
     local branch_name=""
 
-    # First, try to get the branch name from the session details via API
-    local session_response
-    session_response=$(jules_api_get_session "$session_id" 2>/dev/null)
+    # Use provided session response, or fetch if not provided
+    if [ -z "$session_response" ]; then
+        session_response=$(jules_api_get_session "$session_id" 2>/dev/null)
+    fi
 
     if [ -n "$session_response" ]; then
         branch_name=$(jules_api_extract_branch "$session_response")
@@ -111,13 +117,13 @@ for session_id in "${SESSION_IDS[@]}"; do
     result=""
     method=""
 
-    # First, try to fetch activities from API
-    activities_response=$(jules_api_get_activities "$session_id" 2>/dev/null)
+    # First, try to fetch session from API (patch is in .outputs[].changeSet.gitPatch.unidiffPatch)
+    session_response=$(jules_api_get_session "$session_id" 2>/dev/null)
     patch_content=""
 
-    if [ -n "$activities_response" ]; then
-        # Extract the patch from activities
-        patch_content=$(jules_api_extract_patch "$activities_response")
+    if [ -n "$session_response" ]; then
+        # Extract the patch from session outputs
+        patch_content=$(jules_api_extract_patch_from_session "$session_response")
     fi
 
     if [ -n "$patch_content" ]; then
@@ -127,7 +133,7 @@ for session_id in "${SESSION_IDS[@]}"; do
     else
         # API failed or no patch - try git fallback
         api_failed_count=$((api_failed_count + 1))
-        fallback_result=$(try_git_fallback "$session_id" "$patch_file")
+        fallback_result=$(try_git_fallback "$session_id" "$patch_file" "$session_response")
         fallback_exit=$?
 
         if [ $fallback_exit -eq 0 ] && [ -n "$fallback_result" ] && [ -f "$patch_file" ]; then
@@ -163,7 +169,7 @@ echo ""
 # Summary
 echo "Summary: $success_count succeeded, $failed_count failed, $no_changes_count no-changes out of $SESSION_COUNT total"
 if [ $api_failed_count -gt 0 ] && [ $success_count -gt 0 ]; then
-    echo "  Note: $api_failed_count session(s) used git fallback (API activities unavailable)"
+    echo "  Note: $api_failed_count session(s) used git fallback (API patch unavailable)"
 fi
 if [ $no_changes_count -gt 0 ]; then
     echo "  Note: $no_changes_count session(s) completed but made no code changes"

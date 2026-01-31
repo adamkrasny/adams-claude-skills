@@ -280,7 +280,7 @@ jules_api_session_url() {
     echo "${JULES_WEB_BASE}/${session_id}"
 }
 
-# Extract patch from activities response
+# Extract patch from activities response (legacy - patches may not be in activities)
 # Arguments:
 #   $1 - Activities JSON response
 # Returns: Unified diff patch content, or empty if no patch found
@@ -294,6 +294,22 @@ jules_api_extract_patch() {
         | map(select(.artifact.changeSet.gitPatch.unidiffPatch != null))
         | last
         | .artifact.changeSet.gitPatch.unidiffPatch // empty
+    ' 2>/dev/null
+}
+
+# Extract patch from session response (primary method)
+# The patch is stored in .outputs[].changeSet.gitPatch.unidiffPatch
+# Arguments:
+#   $1 - Session JSON response
+# Returns: Unified diff patch content, or empty if no patch found
+jules_api_extract_patch_from_session() {
+    local session_json="$1"
+
+    echo "$session_json" | jq -r '
+        .outputs // []
+        | map(select(.changeSet.gitPatch.unidiffPatch != null))
+        | first
+        | .changeSet.gitPatch.unidiffPatch // empty
     ' 2>/dev/null
 }
 
