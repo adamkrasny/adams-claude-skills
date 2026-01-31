@@ -70,6 +70,9 @@ This skill includes several scripts for workflow automation:
 
 # Clean up patch files and reports
 ~/.claude/skills/crown-jules/cleanup.sh <run_id>
+
+# Create PR from winning session
+~/.claude/skills/crown-jules/create-pr.sh <session_id>
 ```
 
 The `run_id` is a unique identifier for each Crown Jules workflow run. This allows multiple Crown Jules sessions to run in parallel on the same repository without conflicts.
@@ -540,13 +543,35 @@ All three implementations correctly solve the problem. The key differences:
 **To create PR:** https://jules.google.com/session/abc123
 ```
 
+### 4e. Create PR (Optional)
+
+After presenting your recommendation, ask the user:
+> "Would you like me to create a PR from the winning implementation?"
+
+If yes:
+1. Run the PR creation script:
+   ```bash
+   ~/.claude/skills/crown-jules/create-pr.sh <winning_session_id>
+   ```
+
+2. The script will:
+   - Send a message to the Jules session requesting PR creation
+   - Poll until the PR is created (up to 2 minutes)
+   - Output the PR URL
+
+3. Present the PR URL to the user:
+   > "PR created: https://github.com/owner/repo/pull/123"
+
+**If the script fails:**
+- Inform the user that automatic PR creation failed
+- Provide the manual fallback: Jules web UI link
+- Do NOT attempt to create the PR manually or try workarounds
+
 ---
 
 ## Phase 5: Cleanup
 
 **Goal:** Clean up patch files and reports.
-
-**IMPORTANT:** Do NOT offer to merge any implementation into main. The user will create a PR from the Jules web interface.
 
 **Steps:**
 
@@ -566,14 +591,8 @@ All three implementations correctly solve the problem. The key differences:
 3. Mark the workflow task as completed.
 
 4. Provide final summary:
-   - Link to recommended Jules session (user will create PR from there)
-
-5. **Do NOT:**
-   - Offer to merge into main
-   - Offer to create a PR
-   - Offer to apply changes
-
-   The workflow is complete. The user will handle merging via the Jules interface.
+   - If a PR was created in Phase 4e, include the PR URL
+   - Otherwise, provide link to recommended Jules session for manual PR creation
 
 ---
 
@@ -586,6 +605,7 @@ If the skill is invoked and an existing incomplete workflow task exists:
    - **planning**: Continue the planning conversation
    - **polling**: Resume status polling with stored session IDs
    - **evaluation**: Continue evaluation with stored session data and run ID
+   - **pr-creation**: Offer PR creation again
    - **cleanup**: Re-ask cleanup question
 
 Always check for existing `Crown Jules:*` tasks in progress before starting a new workflow.

@@ -330,6 +330,31 @@ jules_api_extract_branch() {
     ' 2>/dev/null
 }
 
+# Send a message to an existing session
+# Arguments:
+#   $1 - Session ID
+#   $2 - Message text
+# Returns: JSON response
+jules_api_send_message() {
+    local session_id="$1"
+    local message="$2"
+
+    # Escape special characters in message for JSON
+    local escaped_message
+    escaped_message=$(echo "$message" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
+
+    jules_api_post "/sessions/$session_id:sendMessage" "{\"message\": \"$escaped_message\"}"
+}
+
+# Extract PR URL from session response
+# Arguments:
+#   $1 - Session JSON response
+# Returns: PR URL if available, or empty
+jules_api_extract_pr_url() {
+    local session_json="$1"
+    echo "$session_json" | jq -r '.output.pullRequest.url // empty' 2>/dev/null
+}
+
 # Find a Jules branch by session ID using naming conventions
 # Arguments:
 #   $1 - Session ID
