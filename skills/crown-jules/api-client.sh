@@ -42,7 +42,7 @@ jules_api_check_auth() {
 jules_api_request() {
     local method="$1"
     local endpoint="$2"
-    local body="$3"
+    local body="${3:-}"
     local url="${JULES_API_BASE}${endpoint}"
 
     local retry=0
@@ -173,7 +173,7 @@ jules_api_create_session() {
     local prompt="$1"
     local repo="$2"
     local branch="${3:-main}"
-    local title="$4"
+    local title="${4:-}"
 
     # Escape special characters in prompt for JSON
     local escaped_prompt

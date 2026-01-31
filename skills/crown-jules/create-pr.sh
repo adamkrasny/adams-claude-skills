@@ -21,7 +21,7 @@ jules_api_check_auth || exit 1
 
 # Send message asking to create PR
 echo "Requesting PR creation for session $session_id..." >&2
-jules_api_send_message "$session_id" "Please create a pull request for these changes."
+jules_api_send_message "$session_id" "Publish the PR"
 
 # Poll session until PR appears (max 2 minutes, 5 second intervals)
 max_polls=24
