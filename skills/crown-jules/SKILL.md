@@ -515,8 +515,8 @@ After your evaluation, present results to the user:
    - Any tradeoffs the user should know about
 
 5. **Next steps**:
+   - **Winner URL**: Direct link to the winning Jules session (always include this prominently)
    - How to apply locally: `git apply .crown-jules/<run_id>/<session_id>.patch`
-   - Link to create PR from Jules interface
 
 Example output format:
 ```
@@ -554,8 +554,9 @@ All three implementations correctly solve the problem. The key differences:
 
 **Session abc123 (Minimal)** is the best fit for this request - it delivers the feature with the least complexity. However, if you expect to extend theming later, **def456 (Maintainable)** provides a better foundation.
 
-**To apply:** `git apply .crown-jules/<run_id>/abc123.patch`
-**To create PR:** https://jules.google.com/session/abc123
+**Winner:** https://jules.google.com/session/abc123
+
+**To apply locally:** `git apply .crown-jules/<run_id>/abc123.patch`
 ```
 
 ### 4e. Create PR (Optional)
@@ -606,8 +607,8 @@ If yes:
 3. Mark the workflow task as completed.
 
 4. Provide final summary:
-   - If a PR was created in Phase 4e, include the PR URL
-   - Otherwise, provide link to recommended Jules session for manual PR creation
+   - **Always include the winning session URL**: `https://jules.google.com/session/<winning_session_id>`
+   - If a PR was created in Phase 4e, also include the PR URL
 
 ---
 
