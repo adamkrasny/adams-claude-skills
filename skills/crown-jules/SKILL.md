@@ -96,7 +96,7 @@ Use Claude's task system to track workflow state. Create a parent task for the w
 - `repo`: GitHub repository (owner/repo format)
 - `originalPrompt`: The user's original prompt, verbatim
 - `plan`: The high-level plan created in Phase 1
-- `sessions`: Array of `{id, url, status, promptType}` for each Jules session (promptType is "detailed", "original", or "high-level")
+- `sessions`: Array of `{id, url, status, approach}` for each Jules session (approach is "minimal", "robust", or "maintainable")
 
 When resuming, read the parent task metadata to determine current state and continue from where you left off.
 
@@ -112,7 +112,7 @@ When resuming, read the parent task metadata to determine current state and cont
 
 1. Parse arguments from the skill invocation - everything provided is the initial idea/prompt.
 
-2. **IMMEDIATELY save the user's exact input as `originalPrompt`** - this is critical for the "Original" prompt strategy later. Save it character-for-character, before any clarification or planning. If the user didn't provide an idea, ask them to describe what they want to build and save THAT response verbatim.
+2. **Save the user's exact input as `originalPrompt`** - useful for reference during planning. If the user didn't provide an idea, ask them to describe what they want to build.
 
 3. Ask clarifying questions to understand:
    - What problem does this solve?
@@ -169,14 +169,16 @@ When resuming, read the parent task metadata to determine current state and cont
 
 ## Phase 2: Dispatch
 
-**Goal:** Send the task to 3 Jules agents using different prompt strategies to test which approach yields the best results.
+**Goal:** Send the task to 3 Jules agents using different implementation approaches to get diverse solutions.
 
 **Prompt Strategy:**
-- **1 agent** receives the **detailed enhanced prompt** (full plan with step-by-step guidance)
-- **1 agent** receives the **original user prompt** (exactly as provided, unmodified)
-- **1 agent** receives a **high-level enhanced prompt** (goals and success criteria only, no detailed plan)
+All 3 agents receive the same detailed prompt (full plan with step-by-step guidance), but each includes a different "approach hint" that guides toward a slightly different implementation philosophy:
 
-This variety tests whether more guidance helps or hinders the agents, while keeping API usage efficient.
+- **Minimal** - Focus on simplicity: smallest change that correctly solves the problem
+- **Robust** - Focus on completeness: handle edge cases and errors thoroughly
+- **Maintainable** - Focus on code quality: clear, well-organized, follows existing patterns
+
+This tests 3 implementations that should all be correct but may differ in their trade-offs, giving the user meaningful choices.
 
 **Steps:**
 
@@ -204,9 +206,9 @@ This variety tests whether more guidance helps or hinders the agents, while keep
    ```
    Parse the output to extract `owner/repo` format (handle both HTTPS and SSH URLs).
 
-3. Build three different prompts for Jules:
+3. Build three prompts with different approach hints:
 
-   **Prompt A: Detailed Enhanced Prompt** (used by 2 agents)
+   **Base Prompt Structure** (same for all 3 agents, with different Approach section):
    ```
    [Short descriptive title - e.g., "Add dark mode toggle to settings page"]
 
@@ -216,35 +218,8 @@ This variety tests whether more guidance helps or hinders the agents, while keep
    ## Plan
    [The high-level plan from Phase 1]
 
-   ## Success Criteria
-   [List from the plan]
-
-   ## Instructions
-   - Do NOT ask questions or request clarification
-   - Do NOT wait for user feedback at any point
-   - Make reasonable decisions autonomously and proceed
-
-   ## Verification
-   Before marking your work as complete, verify your changes pass all checks:
-   1. If package.json contains a "verify" script, run: npm run verify
-   2. Otherwise, run available linting/type-checking
-   3. Fix any errors before completing
-   ```
-
-   **Prompt B: Original User Prompt** (used by 1 agent)
-
-   **CRITICAL:** Use the `originalPrompt` saved in Phase 1 metadata - the user's EXACT words before any planning or clarification. Do NOT use the refined/expanded version. Do NOT add any additional instructions.
-
-   ```
-   [originalPrompt from metadata - e.g., "Implement the next feature in @docs/FUTURE_IDEAS.md"]
-   ```
-
-   **Prompt C: High-Level Enhanced Prompt** (used by 1 agent)
-   ```
-   [Short descriptive title]
-
-   ## Goal
-   [1-2 sentences describing what to achieve - extracted from the plan]
+   ## Approach
+   [VARIES BY AGENT - see below]
 
    ## Success Criteria
    [List from the plan]
@@ -261,20 +236,43 @@ This variety tests whether more guidance helps or hinders the agents, while keep
    3. Fix any errors before completing
    ```
 
-4. Execute session creation for each prompt type (run these sequentially, not in parallel):
+   **Approach Variations:**
+
+   **Minimal** (Agent 1):
+   ```
+   ## Approach
+   Favor simplicity. Make the smallest change that correctly solves the problem.
+   Avoid adding unnecessary features, abstractions, or future-proofing.
+   ```
+
+   **Robust** (Agent 2):
+   ```
+   ## Approach
+   Favor robustness. Handle edge cases and errors thoroughly.
+   Ensure the implementation is complete and production-ready.
+   ```
+
+   **Maintainable** (Agent 3):
+   ```
+   ## Approach
+   Favor maintainability. Write clear, well-organized code that's easy to understand.
+   Follow existing patterns and conventions in the codebase.
+   ```
+
+4. Execute session creation for each approach (run these sequentially, not in parallel):
 
    ```bash
-   # 1 agent with detailed prompt
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt A>" main "Detailed: <short task description>"
+   # Agent with Minimal approach
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt with Minimal approach>" main "Minimal: <short task description>"
 
-   # 1 agent with original prompt
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt B>" main "Original: <short task description>"
+   # Agent with Robust approach
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt with Robust approach>" main "Robust: <short task description>"
 
-   # 1 agent with high-level prompt
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt C>" main "High-Level: <short task description>"
+   # Agent with Maintainable approach
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt with Maintainable approach>" main "Maintainable: <short task description>"
    ```
 
-   The title prefix (Detailed/Original/High-Level) helps identify which prompt strategy each session used.
+   The title prefix (Minimal/Robust/Maintainable) helps identify which approach each session used.
 
    **IMPORTANT:**
    - Do NOT run these commands in the background. You must capture the output synchronously to get the session IDs.
@@ -282,31 +280,31 @@ This variety tests whether more guidance helps or hinders the agents, while keep
 
    **If session creation partially fails:**
    - Proceed with however many sessions were successfully created
-   - Inform the user which prompt types succeeded/failed
-   - If zero sessions were created across all types, wait 30 seconds and retry once
+   - Inform the user which approaches succeeded/failed
+   - If zero sessions were created across all approaches, wait 30 seconds and retry once
 
 5. Parse the output from each call to extract session IDs and URLs from the JSON output.
 
-6. Update the workflow task with session information, noting which prompt type each session used:
+6. Update the workflow task with session information, noting which approach each session used:
    ```
    TaskUpdate:
      metadata: {
        phase: "polling",
        repo: "<owner/repo>",
        sessions: [
-         {id: "<id1>", url: "<url1>", status: "Started", promptType: "detailed"},
-         {id: "<id2>", url: "<url2>", status: "Started", promptType: "original"},
-         {id: "<id3>", url: "<url3>", status: "Started", promptType: "high-level"}
+         {id: "<id1>", url: "<url1>", status: "Started", approach: "minimal"},
+         {id: "<id2>", url: "<url2>", status: "Started", approach: "robust"},
+         {id: "<id3>", url: "<url3>", status: "Started", approach: "maintainable"}
        ]
      }
    ```
 
-7. Inform the user that agents have been dispatched with the prompt strategy:
-   - 1 agent with **detailed prompt** (full plan)
-   - 1 agent with **original prompt** (user's exact words)
-   - 1 agent with **high-level prompt** (goals only)
+7. Inform the user that agents have been dispatched with different approaches:
+   - 1 agent with **Minimal** approach (simplicity-focused)
+   - 1 agent with **Robust** approach (completeness-focused)
+   - 1 agent with **Maintainable** approach (code quality-focused)
 
-   Provide links to all sessions, noting which prompt type each received.
+   Provide links to all sessions, noting which approach each received.
 
 ---
 
@@ -479,19 +477,20 @@ After your evaluation, present results to the user:
    - Why #1 is best (what it got right)
    - What each implementation did differently
    - Any issues or gaps you noticed
-   - Note which prompt type each session used
+   - Note which approach each session used (Minimal/Robust/Maintainable)
 
 2. **Metrics table** (informational, from the report):
 
-| Session | Prompt Type | Lines +/- | Files | Tests |
-|---------|-------------|-----------|-------|-------|
-| [abc123](url) | detailed | +245/-12 | 5 | 2 |
-| [def456](url) | original | +189/-8 | 4 | 1 |
+| Session | Approach | Lines +/- | Files | Tests |
+|---------|----------|-----------|-------|-------|
+| [abc123](url) | Minimal | +89/-12 | 3 | 1 |
+| [def456](url) | Robust | +245/-18 | 5 | 4 |
+| [ghi789](url) | Maintainable | +156/-15 | 4 | 2 |
 
-3. **Prompt Strategy Insights**:
-   - Did the detailed prompt produce better results?
-   - How did the original (unmodified) prompt perform?
-   - Did the high-level prompt give the agent more useful flexibility?
+3. **Approach Comparison**:
+   - How did the Minimal approach handle the requirements? Was it too sparse?
+   - Did the Robust approach add valuable edge case handling or over-engineer?
+   - Did the Maintainable approach improve code clarity or add unnecessary abstraction?
 
 4. **Recommendation** with clear reasoning:
    - What made this implementation the best fit for the request
@@ -509,30 +508,33 @@ Example output format:
 
 After reviewing all patches against the original request to "add dark mode toggle":
 
-### #1: Session abc123 (detailed prompt)
-**Best implementation** - Correctly adds toggle to settings, persists preference to localStorage, and applies theme immediately on change. Clean implementation that does exactly what was asked.
+### #1: Session abc123 (Minimal)
+**Best implementation** - Correctly adds toggle to settings, persists preference to localStorage, and applies theme immediately on change. Clean, focused implementation that does exactly what was asked with no unnecessary complexity.
 
-### #2: Session def456 (high-level prompt)
-Good attempt but missing localStorage persistence - theme resets on page reload.
+### #2: Session def456 (Maintainable)
+Good implementation with clear code organization. Added a `useTheme` hook for reusability. Slightly more code but well-structured and follows existing patterns.
 
-### #3: Session jkl012 (original prompt)
-Over-engineered - added a full theming system with 5 color schemes when only dark/light was requested. Without the specific guidance, the agent interpreted the request too broadly.
+### #3: Session ghi789 (Robust)
+Complete implementation with extensive error handling and fallbacks. Added system preference detection and graceful degradation. More comprehensive but may be overkill for this use case.
 
 ## Metrics (informational)
 
-| Session | Prompt Type | Lines +/- | Files | Tests |
-|---------|-------------|-----------|-------|-------|
-| [abc123](url) | detailed | +245/-12 | 5 | 2 |
-| [def456](url) | high-level | +189/-8 | 4 | 1 |
-| [jkl012](url) | original | +512/-45 | 12 | 3 |
+| Session | Approach | Lines +/- | Files | Tests |
+|---------|----------|-----------|-------|-------|
+| [abc123](url) | Minimal | +89/-12 | 3 | 1 |
+| [def456](url) | Maintainable | +156/-15 | 4 | 2 |
+| [ghi789](url) | Robust | +245/-18 | 5 | 4 |
 
-## Prompt Strategy Insights
+## Approach Comparison
 
-In this run, the **detailed prompt** performed best - the explicit plan helped the agent stay focused on exactly what was needed. The **original prompt** led to over-engineering, suggesting that more guidance was beneficial for this task. The **high-level prompt** found a middle ground but missed some details.
+All three implementations correctly solve the problem. The key differences:
+- **Minimal** stayed focused on exactly what was requested - good when you want the smallest diff
+- **Maintainable** added good structure that would help if this feature grows - good for long-term codebases
+- **Robust** added comprehensive error handling - good if reliability is critical
 
 ## Recommendation
 
-**Session abc123** is the clear winner - it does exactly what was asked, nothing more, nothing less.
+**Session abc123 (Minimal)** is the best fit for this request - it delivers the feature with the least complexity. However, if you expect to extend theming later, **def456 (Maintainable)** provides a better foundation.
 
 **To apply:** `git apply .crown-jules/<run_id>/abc123.patch`
 **To create PR:** https://jules.google.com/session/abc123
