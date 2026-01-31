@@ -343,7 +343,7 @@ jules_api_send_message() {
     local escaped_message
     escaped_message=$(echo "$message" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
 
-    jules_api_post "/sessions/$session_id:sendMessage" "{\"message\": \"$escaped_message\"}"
+    jules_api_post "/sessions/$session_id:sendMessage" "{\"prompt\": \"$escaped_message\"}"
 }
 
 # Extract PR URL from session response
