@@ -10,6 +10,21 @@ Orchestrate multiple Jules AI agents working in parallel on the same task, then 
 
 ---
 
+## Prerequisites
+
+Before using this skill, ensure the following are set up:
+
+1. **Set `JULES_API_KEY` environment variable**:
+   ```bash
+   export JULES_API_KEY='your-api-key'
+   ```
+
+2. **Connect your GitHub repo to Jules**: Visit [jules.google.com](https://jules.google.com) and connect the repository you want to work with. The API can only use sources that have already been connected.
+
+3. **Install dependencies**: `curl` and `jq` must be installed (standard on most systems).
+
+---
+
 ## Important Notes
 
 - **Requires `JULES_API_KEY` environment variable** - Set your Jules API key before using this skill:
