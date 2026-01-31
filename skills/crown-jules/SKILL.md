@@ -1,7 +1,7 @@
 ---
 name: crown-jules
 description: "Orchestrate parallel Jules agents to implement a feature, then compare and rank results. Use when user says: 'crown jules', 'compare jules implementations', 'jules compare', 'parallel jules', 'have multiple agents try this', 'let jules compete'."
-argument-hint: "[idea or prompt]"
+argument-hint: "[idea or prompt] [--quick]"
 ---
 
 # Crown Jules Skill
@@ -104,6 +104,24 @@ This skill executes a 5-phase workflow:
 4. **Evaluation** - Generate patches, perform deep analysis, rank results
 5. **Cleanup** - Remove patch files and reports
 
+### Quick Mode
+
+Use `--quick` to skip the planning phase and proceed directly to dispatch:
+
+```
+/crown-jules --quick Add dark mode toggle to settings page
+```
+
+Quick mode is useful when:
+- You have a clear, well-defined task
+- You've already thought through the implementation
+- You want to minimize back-and-forth
+
+In quick mode:
+- The Plan agent still explores the codebase to understand context
+- But no clarifying questions are asked
+- Dispatch begins immediately after plan generation
+
 ## State Management
 
 Use Claude's task system to track workflow state. Create a parent task for the workflow and child tasks for each phase. Store critical state in task metadata so the workflow can resume if interrupted.
@@ -128,11 +146,23 @@ When resuming, read the parent task metadata to determine current state and cont
 
 **Steps:**
 
-1. Parse arguments from the skill invocation - everything provided is the initial idea/prompt.
+1. Parse arguments from the skill invocation:
+   - Check for `--quick` flag - if present, enable quick mode
+   - Everything else is the initial idea/prompt
 
 2. **Save the user's exact input as `originalPrompt`** - useful for reference during planning. If the user didn't provide an idea, ask them to describe what they want to build.
 
-3. Ask clarifying questions to understand:
+3. **Determine if clarifications are needed** (skip this step in quick mode):
+
+   **Auto-detect detailed prompts:** If the prompt already contains multiple of these elements, it's likely detailed enough to skip clarifications:
+   - Multiple bullet points or numbered items
+   - Specific file names or code references
+   - Clear success criteria or expected behavior
+   - Technical implementation details
+
+   **For detailed prompts:** Instead of asking questions, briefly confirm: "Your prompt is detailed - I'll proceed with planning. Let me know if you want to add anything, or say 'proceed' to continue."
+
+   **For vague prompts:** Ask clarifying questions to understand:
    - What problem does this solve?
    - What are the success criteria?
    - Are there any constraints or preferences?
@@ -246,6 +276,11 @@ This tests 3 implementations that should all be correct but may differ in their 
    - Do NOT ask questions or request clarification
    - Do NOT wait for user feedback at any point
    - Make reasonable decisions autonomously and proceed
+
+   ## Code Cleanup
+   - Remove any dead code created by your changes (unused variables, unreachable code, commented-out code)
+   - If your changes make existing code unused or unreachable, remove that code too
+   - Do not leave stale comments or TODO items
 
    ## Verification
    Before marking your work as complete, verify your changes pass all checks:
@@ -695,4 +730,14 @@ This structure allows multiple Crown Jules workflows to run in parallel on the s
 
 /crown-jules
 (Then describe your idea when prompted)
+
+# Quick mode - skip planning clarifications
+/crown-jules --quick Fix the login button styling on mobile
+
+# Detailed prompt - auto-detected, minimal clarifications
+/crown-jules
+* Fix bug in user authentication flow
+* Add error handling for network failures
+* Update the login form validation
+* Ensure logout clears all session data
 ```
