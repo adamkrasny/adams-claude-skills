@@ -38,16 +38,17 @@ Orchestrate multiple Jules AI agents working in parallel on the same task, then 
 - `curl` and `jq` installed
 
 **Workflow:**
-1. **Planning** - Collaborate to refine idea into actionable plan
-2. **Dispatch** - Send task to 4 parallel Jules agents with different prompt strategies
+1. **Planning** - Collaborate to refine idea into actionable plan (use `--quick` to skip)
+2. **Dispatch** - Send task to 3 parallel Jules agents with different approach hints
 3. **Polling** - Monitor progress until all agents complete
-4. **Evaluation** - Generate patches, analyze, and rank results
+4. **Evaluation** - Generate patches, analyze correctness, and rank results
 5. **Cleanup** - Remove temporary files
 
-**Prompt Strategy:**
-- 2 agents with **detailed prompt** (full plan with step-by-step guidance)
-- 1 agent with **original prompt** (user's exact words, unmodified)
-- 1 agent with **high-level prompt** (goals and success criteria only)
+**Approach Strategy:**
+All 3 agents receive the same detailed prompt but with different implementation philosophies:
+- **Minimal** - Simplest change that correctly solves the problem
+- **Robust** - Thorough edge case and error handling
+- **Maintainable** - Clear, well-organized code following existing patterns
 
 **Example usage:**
 ```
