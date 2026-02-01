@@ -4,13 +4,17 @@ A collection of custom skills for Claude Code and the Claude Agent SDK.
 
 ## Installation
 
-Install individual skills using the `skill` CLI:
-
 ```bash
-npx @anthropic-ai/skill install aloshy/adams-claude-skills/crown-jules
+npx skills add aloshy/adams-claude-skills
 ```
 
-Or manually symlink skills:
+Or install a specific skill:
+
+```bash
+npx skills add https://github.com/aloshy/adams-claude-skills/tree/main/skills/crown-jules
+```
+
+Or manually symlink:
 
 ```bash
 # Symlink entire skills directory
