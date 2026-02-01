@@ -5,13 +5,13 @@ A collection of custom skills for Claude Code and the Claude Agent SDK.
 ## Installation
 
 ```bash
-npx skills add aloshy/adams-claude-skills
+npx skills add adamkrasny/adams-claude-skills
 ```
 
 Or install a specific skill:
 
 ```bash
-npx skills add https://github.com/aloshy/adams-claude-skills/tree/main/skills/crown-jules
+npx skills add https://github.com/adamkrasny/adams-claude-skills/tree/main/skills/crown-jules
 ```
 
 Or manually symlink:
