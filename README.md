@@ -2,15 +2,22 @@
 
 A collection of custom skills for Claude Code and the Claude Agent SDK.
 
-## Structure
+## Installation
 
+Install individual skills using the `skill` CLI:
+
+```bash
+npx @anthropic-ai/skill install aloshy/adams-claude-skills/crown-jules
 ```
-skills/
-├── skill-name/
-│   ├── SKILL.md          # Main skill file (required)
-│   ├── reference.md      # Additional docs (loaded on-demand)
-│   └── scripts/          # Utility scripts (executed, not loaded)
-│       └── helper.py
+
+Or manually symlink skills:
+
+```bash
+# Symlink entire skills directory
+ln -s /path/to/adams-claude-skills/skills ~/.claude/skills
+
+# Or symlink individual skills
+ln -s /path/to/adams-claude-skills/skills/crown-jules ~/.claude/skills/crown-jules
 ```
 
 ## Skills
@@ -64,18 +71,6 @@ description: What the skill does. When to use it.
 - Max 64 characters
 - Gerund form recommended: `processing-pdfs`, `reviewing-code`
 - Avoid: `anthropic`, `claude`, generic names like `helper` or `utils`
-
-## Installation
-
-To use these skills with Claude Code, symlink or copy the skills directory:
-
-```bash
-# Symlink entire skills directory
-ln -s /path/to/adams-claude-skills/skills ~/.claude/skills
-
-# Or symlink individual skills
-ln -s /path/to/adams-claude-skills/skills/crown-jules ~/.claude/skills/crown-jules
-```
 
 ## Resources
 
