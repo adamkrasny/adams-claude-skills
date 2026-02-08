@@ -98,15 +98,15 @@ The `run_id` is a unique identifier for each Crown Jules workflow run. This allo
 
 This skill executes a 5-phase workflow:
 
-1. **Planning** - Collaborate with user to refine their idea into a clear plan
-2. **Dispatch** - Send the task to 3 parallel Jules agents with different prompt strategies
+1. **Prompt Crafting** - Research the codebase, then enhance the user's prompt with useful context
+2. **Dispatch** - Send the same enhanced prompt to 3 parallel Jules agents
 3. **Polling** - Monitor progress until all agents complete
 4. **Evaluation** - Generate patches, perform deep analysis, rank results
 5. **Cleanup** - Remove patch files and reports
 
 ### Quick Mode
 
-Use `--quick` to skip the planning phase and proceed directly to dispatch:
+Use `--quick` to skip clarification questions and proceed directly:
 
 ```
 /crown-jules --quick Add dark mode toggle to settings page
@@ -118,9 +118,9 @@ Quick mode is useful when:
 - You want to minimize back-and-forth
 
 In quick mode:
-- The Plan agent still explores the codebase to understand context
+- The Explore agent still researches the codebase for context
 - But no clarifying questions are asked
-- Dispatch begins immediately after plan generation
+- Dispatch begins immediately after prompt crafting
 
 ## State Management
 
@@ -131,18 +131,18 @@ Use Claude's task system to track workflow state. Create a parent task for the w
 - `runId`: Unique identifier for this workflow run (use a short random string, e.g., first 8 chars of a UUID)
 - `repo`: GitHub repository (owner/repo format)
 - `originalPrompt`: The user's original prompt, verbatim
-- `plan`: The high-level plan created in Phase 1
-- `sessions`: Array of `{id, url, status, approach}` for each Jules session (approach is "minimal", "robust", or "maintainable")
+- `enhancedPrompt`: The crafted prompt from Phase 1
+- `sessions`: Array of `{id, url, status}` for each Jules session
 
 When resuming, read the parent task metadata to determine current state and continue from where you left off.
 
 ---
 
-## Phase 1: Planning
+## Phase 1: Prompt Crafting
 
-**Goal:** Transform the user's idea into a clear, actionable plan.
+**Goal:** Research the codebase, then enhance the user's prompt with useful context — while keeping it as a natural, high-level prompt that gives Jules creative freedom.
 
-**Your role:** Act as a sounding board and partner architect. Be collaborative but thorough.
+**Your role:** Act as a prompt engineer and codebase researcher. Your job is to make the prompt *smarter*, not more *specific*. Jules does its own planning, code review, and decision-making — don't take that away from it.
 
 **Steps:**
 
@@ -150,65 +150,113 @@ When resuming, read the parent task metadata to determine current state and cont
    - Check for `--quick` flag - if present, enable quick mode
    - Everything else is the initial idea/prompt
 
-2. **Save the user's exact input as `originalPrompt`** - useful for reference during planning. If the user didn't provide an idea, ask them to describe what they want to build.
+2. **Save the user's exact input as `originalPrompt`** - If the user didn't provide an idea, ask them to describe what they want to build.
 
-3. **Determine if clarifications are needed** (skip this step in quick mode):
+3. **Gather brief clarifications if needed** (skip in quick mode):
 
-   **Auto-detect detailed prompts:** If the prompt already contains multiple of these elements, it's likely detailed enough to skip clarifications:
-   - Multiple bullet points or numbered items
-   - Specific file names or code references
-   - Clear success criteria or expected behavior
-   - Technical implementation details
+   **Auto-detect detailed prompts:** If the prompt already contains specific details (file references, clear requirements, technical specifics), skip clarifications.
 
-   **For detailed prompts:** Instead of asking questions, briefly confirm: "Your prompt is detailed - I'll proceed with planning. Let me know if you want to add anything, or say 'proceed' to continue."
+   **For vague prompts:** Ask 1-2 focused questions to understand what they actually want. Don't over-interrogate.
 
-   **For vague prompts:** Ask clarifying questions to understand:
-   - What problem does this solve?
-   - What are the success criteria?
-   - Are there any constraints or preferences?
-   - Which parts of the codebase are involved?
-
-4. **Use the Plan agent** to explore the codebase and design the implementation plan:
+4. **Use the Explore agent** to research the codebase:
 
    ```
    Task:
-     subagent_type: "Plan"
+     subagent_type: "Explore"
      prompt: |
-       Explore this codebase and create an implementation plan for the following task:
+       I need to understand this codebase well enough to give context to an AI coding
+       agent that will implement the following task:
 
-       ## Task
-       [User's idea/request]
+       "[User's idea/request]"
 
-       ## Context from user
-       [Any clarifications gathered in step 3]
+       Research and return:
+       1. Tech stack and key frameworks/libraries
+       2. Project structure conventions (where do components/modules/tests live?)
+       3. Relevant patterns the codebase already uses (state management, API patterns,
+          styling approach, etc.)
+       4. Any existing code that's closely related to this task
 
-       ## What I need from you
-       1. Inspect relevant files (README, existing modules, patterns)
-       2. Identify which files will need to be created or modified
-       3. Understand existing conventions and patterns
-       4. Create a high-level implementation plan with:
-          - **Goals**: What we're trying to achieve (2-3 bullet points)
-          - **Approach**: How we'll achieve it (3-5 bullet points)
-          - **Key files**: Which files will likely be created/modified
-          - **Success criteria**: How we'll know it's done correctly
-
-       Return the plan in a structured format I can present to the user.
+       Keep it concise — just the facts an implementer would need to make good decisions.
    ```
 
-5. Review the Plan agent's output and present the plan to the user. Get their approval before proceeding.
+5. **Craft the enhanced prompt.** This is the critical step. The output should read like a well-written prompt from a knowledgeable developer — NOT like a spec, plan, or instruction set.
 
-6. Generate a unique run ID (first 8 characters of a UUID or similar short random string).
+   **Prompt crafting principles:**
+   - Keep it in plain English, conversational tone
+   - Include codebase context as background info ("This project uses X, components live in Y")
+   - State what the user wants clearly, but don't prescribe HOW to do it
+   - Don't list specific files to edit
+   - Don't include step-by-step implementation instructions
+   - Don't include commands to run
+   - Do mention relevant existing patterns Jules should be aware of
+   - Do mention any constraints or preferences the user expressed
 
-7. Create the workflow tracking task:
+   **Enhanced prompt structure:**
+   ```
+   [Clear statement of what to build/change — 1-2 sentences]
+
+   [Codebase context paragraph — tech stack, relevant patterns, where related
+   code lives. Written as background info, not instructions.]
+
+   [Any specific requirements or constraints the user mentioned]
+
+   Important:
+   - Do NOT ask questions or request clarification — make reasonable decisions and proceed
+   - Do NOT wait for user feedback at any point
+   - Clean up any dead code your changes create
+   - Before finishing, verify your changes: if a "verify" script exists (npm run verify,
+     ./verify, etc.), run it. Otherwise run available linting/type-checking. Fix any errors.
+   ```
+
+   **Example — good vs bad prompt enhancement:**
+
+   Bad (too prescriptive — robs Jules of creative freedom):
+   ```
+   ## Task
+   Add dark mode toggle to settings page
+
+   ## Plan
+   1. Create ThemeContext in src/contexts/ThemeContext.tsx
+   2. Modify src/components/Settings.tsx to add toggle
+   3. Update src/styles/globals.css with dark theme variables
+
+   ## Files to modify
+   - src/contexts/ThemeContext.tsx (create)
+   - src/components/Settings.tsx (modify)
+   - src/styles/globals.css (modify)
+   ```
+
+   Good (informative but lets Jules decide how):
+   ```
+   Add a dark mode toggle to the settings page. The toggle should persist the
+   user's preference and apply the theme immediately when changed.
+
+   This is a Next.js app using Tailwind CSS. The settings page is at
+   src/components/Settings.tsx. The app currently has no theming system.
+   State management uses React context — see src/contexts/ for existing examples
+   of how contexts are structured in this project.
+
+   Important:
+   - Do NOT ask questions or request clarification — make reasonable decisions and proceed
+   - Do NOT wait for user feedback at any point
+   - Clean up any dead code your changes create
+   - Before finishing, run `npm run verify` to check your work. Fix any errors.
+   ```
+
+6. **Present the enhanced prompt to the user** for approval. Show them exactly what will be sent to Jules so they can adjust if needed.
+
+7. Generate a unique run ID (first 8 characters of a UUID or similar short random string).
+
+8. Create the workflow tracking task:
    ```
    TaskCreate:
      subject: "Crown Jules: [brief description]"
      description: "Parallel Jules workflow for: [idea summary]"
      metadata: {
-       phase: "planning",
+       phase: "prompt-crafting",
        runId: "[unique run ID]",
        originalPrompt: "[the user's original prompt, verbatim]",
-       plan: "[the approved plan]",
+       enhancedPrompt: "[the crafted prompt]",
        sessions: []
      }
    ```
@@ -217,16 +265,10 @@ When resuming, read the parent task metadata to determine current state and cont
 
 ## Phase 2: Dispatch
 
-**Goal:** Send the task to 3 Jules agents using different implementation approaches to get diverse solutions.
+**Goal:** Send the enhanced prompt to 3 Jules agents in parallel.
 
-**Prompt Strategy:**
-All 3 agents receive the same detailed prompt (full plan with step-by-step guidance), but each includes a different "approach hint" that guides toward a slightly different implementation philosophy:
-
-- **Minimal** - Focus on simplicity: smallest change that correctly solves the problem
-- **Robust** - Focus on completeness: handle edge cases and errors thoroughly
-- **Maintainable** - Focus on code quality: clear, well-organized, follows existing patterns
-
-This tests 3 implementations that should all be correct but may differ in their trade-offs, giving the user meaningful choices.
+**Strategy:**
+Each agent receives a **slightly rephrased version** of the same prompt. The meaning and requirements stay identical, but the wording varies — reordering sentences, using synonyms, restructuring paragraphs. This nudges Jules's non-deterministic problem-solving so each agent is more likely to explore a genuinely different path.
 
 **Steps:**
 
@@ -254,78 +296,20 @@ This tests 3 implementations that should all be correct but may differ in their 
    ```
    Parse the output to extract `owner/repo` format (handle both HTTPS and SSH URLs).
 
-3. Build three prompts with different approach hints:
+3. **Create 3 variations of the enhanced prompt.** Take the prompt from Phase 1 and rephrase it twice to create 3 total versions. Each variation must:
+   - Preserve the exact same requirements, constraints, and codebase context
+   - Change the wording: reorder sentences, use synonyms, restructure paragraphs
+   - Keep the same "Important" operational instructions section at the end (don't rephrase the "Do NOT ask questions" etc. — those should stay exact)
 
-   **Base Prompt Structure** (same for all 3 agents, with different Approach section):
-   ```
-   [Short descriptive title - e.g., "Add dark mode toggle to settings page"]
+   The goal is surface-level variation only — like three different developers describing the same task. Do NOT change what's being asked for, add new requirements, or remove any.
 
-   ## Task
-   [Clear description of what to implement]
-
-   ## Plan
-   [The high-level plan from Phase 1]
-
-   ## Approach
-   [VARIES BY AGENT - see below]
-
-   ## Success Criteria
-   [List from the plan]
-
-   ## Instructions
-   - Do NOT ask questions or request clarification
-   - Do NOT wait for user feedback at any point
-   - Make reasonable decisions autonomously and proceed
-
-   ## Code Cleanup
-   - Remove any dead code created by your changes (unused variables, unreachable code, commented-out code)
-   - If your changes make existing code unused or unreachable, remove that code too
-   - Do not leave stale comments or TODO items
-
-   ## Verification
-   Before marking your work as complete, verify your changes pass all checks:
-   1. If package.json contains a "verify" script, run: npm run verify
-   2. Otherwise, run available linting/type-checking
-   3. Fix any errors before completing
-   ```
-
-   **Approach Variations:**
-
-   **Minimal** (Agent 1):
-   ```
-   ## Approach
-   Favor simplicity. Make the smallest change that correctly solves the problem.
-   Avoid adding unnecessary features, abstractions, or future-proofing.
-   ```
-
-   **Robust** (Agent 2):
-   ```
-   ## Approach
-   Favor robustness. Handle edge cases and errors thoroughly.
-   Ensure the implementation is complete and production-ready.
-   ```
-
-   **Maintainable** (Agent 3):
-   ```
-   ## Approach
-   Favor maintainability. Write clear, well-organized code that's easy to understand.
-   Follow existing patterns and conventions in the codebase.
-   ```
-
-4. Execute session creation for each approach (run these sequentially, not in parallel):
+4. Execute session creation (run these sequentially, not in parallel):
 
    ```bash
-   # Agent with Minimal approach
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt with Minimal approach>" main "Minimal: <short task description>"
-
-   # Agent with Robust approach
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt with Robust approach>" main "Robust: <short task description>"
-
-   # Agent with Maintainable approach
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<Prompt with Maintainable approach>" main "Maintainable: <short task description>"
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<variation 1>" main "Crown Jules #1: <short task description>"
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<variation 2>" main "Crown Jules #2: <short task description>"
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<variation 3>" main "Crown Jules #3: <short task description>"
    ```
-
-   The title prefix (Minimal/Robust/Maintainable) helps identify which approach each session used.
 
    **IMPORTANT:**
    - Do NOT run these commands in the background. You must capture the output synchronously to get the session IDs.
@@ -333,31 +317,26 @@ This tests 3 implementations that should all be correct but may differ in their 
 
    **If session creation partially fails:**
    - Proceed with however many sessions were successfully created
-   - Inform the user which approaches succeeded/failed
-   - If zero sessions were created across all approaches, wait 30 seconds and retry once
+   - Inform the user which sessions succeeded/failed
+   - If zero sessions were created, wait 30 seconds and retry once
 
 5. Parse the output from each call to extract session IDs and URLs from the JSON output.
 
-6. Update the workflow task with session information, noting which approach each session used:
+6. Update the workflow task with session information:
    ```
    TaskUpdate:
      metadata: {
        phase: "polling",
        repo: "<owner/repo>",
        sessions: [
-         {id: "<id1>", url: "<url1>", status: "Started", approach: "minimal"},
-         {id: "<id2>", url: "<url2>", status: "Started", approach: "robust"},
-         {id: "<id3>", url: "<url3>", status: "Started", approach: "maintainable"}
+         {id: "<id1>", url: "<url1>", status: "Started"},
+         {id: "<id2>", url: "<url2>", status: "Started"},
+         {id: "<id3>", url: "<url3>", status: "Started"}
        ]
      }
    ```
 
-7. Inform the user that agents have been dispatched with different approaches:
-   - 1 agent with **Minimal** approach (simplicity-focused)
-   - 1 agent with **Robust** approach (completeness-focused)
-   - 1 agent with **Maintainable** approach (code quality-focused)
-
-   Provide links to all sessions, noting which approach each received.
+7. Inform the user that 3 agents have been dispatched with the same prompt. Provide links to all sessions.
 
 ---
 
@@ -492,12 +471,12 @@ Poll #3 - Waiting 30s... (Ctrl+C to stop)
 **Evaluation criteria (in order of importance):**
 
 1. **Correctness (primary)**: Does it correctly implement what was requested?
-   - Does it address the core requirements from the original plan?
+   - Does it address the core requirements from the original prompt?
    - Does it actually work as expected?
    - Are there bugs, missing pieces, or misunderstandings?
 
 2. **Completeness**: Did it implement everything asked for?
-   - All features from the plan included?
+   - All features from the prompt included?
    - Edge cases handled appropriately?
 
 3. **Code quality (secondary)**: Is it well-implemented?
@@ -518,7 +497,7 @@ Poll #3 - Waiting 30s... (Ctrl+C to stop)
    cat .crown-jules/<run_id>/<session_id>.patch
    ```
 
-2. **Compare each implementation** against the original plan and success criteria from Phase 1.
+2. **Compare each implementation** against the original prompt and the user's requirements.
 
 3. **Rank the implementations** based primarily on correctness and completeness.
 
@@ -528,22 +507,18 @@ After your evaluation, present results to the user:
 
 1. **Your rankings** with justification for each:
    - Why #1 is best (what it got right)
-   - What each implementation did differently
+   - What each implementation did differently (architecture, patterns, trade-offs)
    - Any issues or gaps you noticed
-   - Note which approach each session used (Minimal/Robust/Maintainable)
 
 2. **Metrics table** (informational, from the report):
 
-| Session | Approach | Lines +/- | Files | Tests |
-|---------|----------|-----------|-------|-------|
-| [abc123](url) | Minimal | +89/-12 | 3 | 1 |
-| [def456](url) | Robust | +245/-18 | 5 | 4 |
-| [ghi789](url) | Maintainable | +156/-15 | 4 | 2 |
+| Session | Lines +/- | Files | Tests |
+|---------|-----------|-------|-------|
+| [abc123](url) | +89/-12 | 3 | 1 |
+| [def456](url) | +245/-18 | 5 | 4 |
+| [ghi789](url) | +156/-15 | 4 | 2 |
 
-3. **Approach Comparison**:
-   - How did the Minimal approach handle the requirements? Was it too sparse?
-   - Did the Robust approach add valuable edge case handling or over-engineer?
-   - Did the Maintainable approach improve code clarity or add unnecessary abstraction?
+3. **How the solutions diverged**: Since all agents received the same prompt, highlight the interesting ways they chose different paths — different architectures, different libraries, different trade-offs. This is the value of running multiple agents.
 
 4. **Recommendation** with clear reasoning:
    - What made this implementation the best fit for the request
@@ -559,35 +534,35 @@ Example output format:
 
 ## My Evaluation
 
-After reviewing all patches against the original request to "add dark mode toggle":
+After reviewing all 3 patches against the original request to "add dark mode toggle":
 
-### #1: Session abc123 (Minimal)
-**Best implementation** - Correctly adds toggle to settings, persists preference to localStorage, and applies theme immediately on change. Clean, focused implementation that does exactly what was asked with no unnecessary complexity.
+### #1: Session abc123
+**Best implementation** - Correctly adds toggle to settings, persists preference to localStorage, and applies theme immediately on change. Clean, focused implementation that does exactly what was asked.
 
-### #2: Session def456 (Maintainable)
-Good implementation with clear code organization. Added a `useTheme` hook for reusability. Slightly more code but well-structured and follows existing patterns.
+### #2: Session def456
+Good implementation with clear code organization. Took a different approach — created a dedicated `useTheme` hook and CSS custom properties instead of Tailwind's dark mode. Well-structured but slightly more complex than needed.
 
-### #3: Session ghi789 (Robust)
-Complete implementation with extensive error handling and fallbacks. Added system preference detection and graceful degradation. More comprehensive but may be overkill for this use case.
+### #3: Session ghi789
+Interesting approach using system preference detection as the default, with the manual toggle as an override. However, missed persisting the preference across sessions — a significant gap.
 
 ## Metrics (informational)
 
-| Session | Approach | Lines +/- | Files | Tests |
-|---------|----------|-----------|-------|-------|
-| [abc123](url) | Minimal | +89/-12 | 3 | 1 |
-| [def456](url) | Maintainable | +156/-15 | 4 | 2 |
-| [ghi789](url) | Robust | +245/-18 | 5 | 4 |
+| Session | Lines +/- | Files | Tests |
+|---------|-----------|-------|-------|
+| [abc123](url) | +89/-12 | 3 | 1 |
+| [def456](url) | +156/-15 | 4 | 2 |
+| [ghi789](url) | +245/-18 | 5 | 4 |
 
-## Approach Comparison
+## How They Diverged
 
-All three implementations correctly solve the problem. The key differences:
-- **Minimal** stayed focused on exactly what was requested - good when you want the smallest diff
-- **Maintainable** added good structure that would help if this feature grows - good for long-term codebases
-- **Robust** added comprehensive error handling - good if reliability is critical
+All three agents received the same prompt but made different choices:
+- **abc123** used Tailwind's built-in dark mode with a simple context provider
+- **def456** built a custom CSS variable system, more flexible but more code
+- **ghi789** prioritized system preference detection, focusing on OS integration
 
 ## Recommendation
 
-**Session abc123 (Minimal)** is the best fit for this request - it delivers the feature with the least complexity. However, if you expect to extend theming later, **def456 (Maintainable)** provides a better foundation.
+**Session abc123** is the best fit — it delivers the feature correctly with the least complexity, using patterns already in the codebase.
 
 **Winner:** https://jules.google.com/session/abc123
 
@@ -653,7 +628,7 @@ If the skill is invoked and an existing incomplete workflow task exists:
 
 1. Read the task metadata to determine current phase and run ID
 2. Resume from that phase using the stored run ID:
-   - **planning**: Continue the planning conversation
+   - **prompt-crafting**: Continue crafting the enhanced prompt
    - **polling**: Resume status polling with stored session IDs
    - **evaluation**: Continue evaluation with stored session data and run ID
    - **pr-creation**: Offer PR creation again
