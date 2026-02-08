@@ -183,22 +183,27 @@ When resuming, read the parent task metadata to determine current state and cont
 
    **Prompt crafting principles:**
    - Keep it in plain English, conversational tone
+   - State the GOAL clearly — what the user wants to achieve and how they'll know it's working
    - Include codebase context as background info ("This project uses X, components live in Y")
-   - State what the user wants clearly, but don't prescribe HOW to do it
+   - Do mention relevant architectural details Jules should be aware of
+   - Do mention any constraints or preferences the user expressed
+   - Don't prescribe HOW to solve the problem — that's Jules's job
    - Don't list specific files to edit
+   - Don't diagnose specific bottlenecks or bugs — let Jules investigate
+   - Don't suggest specific solutions or technologies to use
    - Don't include step-by-step implementation instructions
    - Don't include commands to run
-   - Do mention relevant existing patterns Jules should be aware of
-   - Do mention any constraints or preferences the user expressed
+
+   **The key test:** If your prompt reads like an answer to the problem, it's too prescriptive. The prompt should be the *question*, not the *answer*. Jules is a capable agent that can read code, profile performance, identify issues, and design solutions. Let it.
 
    **Enhanced prompt structure:**
    ```
-   [Clear statement of what to build/change — 1-2 sentences]
+   [Clear statement of what to build/change and the success criteria — 1-3 sentences]
 
-   [Codebase context paragraph — tech stack, relevant patterns, where related
-   code lives. Written as background info, not instructions.]
+   [Codebase context paragraph — tech stack, architecture, relevant patterns.
+   Written as background info, not instructions.]
 
-   [Any specific requirements or constraints the user mentioned]
+   [Any constraints or requirements the user cares about]
 
    Important:
    - Do NOT ask questions or request clarification — make reasonable decisions and proceed
@@ -208,9 +213,9 @@ When resuming, read the parent task metadata to determine current state and cont
      ./verify, etc.), run it. Otherwise run available linting/type-checking. Fix any errors.
    ```
 
-   **Example — good vs bad prompt enhancement:**
+   **Example 1 — simple feature:**
 
-   Bad (too prescriptive — robs Jules of creative freedom):
+   Bad (too prescriptive):
    ```
    ## Task
    Add dark mode toggle to settings page
@@ -226,21 +231,47 @@ When resuming, read the parent task metadata to determine current state and cont
    - src/styles/globals.css (modify)
    ```
 
-   Good (informative but lets Jules decide how):
+   Good (states goal, gives context, lets Jules decide how):
    ```
    Add a dark mode toggle to the settings page. The toggle should persist the
    user's preference and apply the theme immediately when changed.
 
-   This is a Next.js app using Tailwind CSS. The settings page is at
-   src/components/Settings.tsx. The app currently has no theming system.
-   State management uses React context — see src/contexts/ for existing examples
-   of how contexts are structured in this project.
+   This is a Next.js app using Tailwind CSS. The app currently has no theming
+   system. State management uses React context — see src/contexts/ for existing
+   examples of how contexts are structured in this project.
+   ```
 
-   Important:
-   - Do NOT ask questions or request clarification — make reasonable decisions and proceed
-   - Do NOT wait for user feedback at any point
-   - Clean up any dead code your changes create
-   - Before finishing, run `npm run verify` to check your work. Fix any errors.
+   **Example 2 — complex optimization (notice: NO diagnoses, NO prescribed solutions):**
+
+   Bad (does Jules's job — diagnoses every issue and prescribes solutions):
+   ```
+   Optimize to support 50k particles at 60 FPS. The main bottlenecks are:
+   1. RENDERING (~8-15ms): 50k individual ctx.drawImage() calls. Switch to
+      WebGL instanced rendering — data is already in typed arrays.
+   2. SYNC OVERHEAD (~2-3ms): syncAliveCount() iterates all 150k slots.
+      Eliminate by having the worker maintain its own free list.
+   3. COLLISION (~4-8ms): Spatial hash cell size is 20px, too fine. Increase
+      to 40-60px. Reduce particleSolverIterations adaptively.
+   4. STATIC BODIES (~1-2ms): Vertices serialized every frame via postMessage.
+      Add a dirty flag and only re-send when modified.
+   Key files: src/renderer.js, src/particles.js, src/particle-worker.js...
+   ```
+
+   Good (states the goal and context, lets Jules profile and decide):
+   ```
+   Optimize the physics and rendering systems to comfortably support 50,000
+   particles at 60 FPS. Currently at 50k the frame rate drops noticeably.
+
+   This is a vanilla JS ES module project with no build system — just ES
+   modules served via a Python HTTP server. It uses Matter.js (from CDN) for
+   rigid bodies and a custom SoA Verlet particle system for high-volume
+   particles. Rendering is Canvas 2D with a sprite cache. A Web Worker with
+   SharedArrayBuffer handles particle physics off-thread when available.
+
+   Note: the particle physics code exists in two files that must stay in
+   sync — one for the main thread and one for the worker.
+
+   Keep Canvas 2D rendering as a fallback if you introduce an alternative.
    ```
 
 6. **Present the enhanced prompt to the user** for approval. Show them exactly what will be sent to Jules so they can adjust if needed.
