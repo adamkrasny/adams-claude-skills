@@ -140,9 +140,9 @@ When resuming, read the parent task metadata to determine current state and cont
 
 ## Phase 1: Prompt Crafting
 
-**Goal:** Research the codebase, then enhance the user's prompt with useful context — while keeping it as a natural, high-level prompt that gives Jules creative freedom.
+**Goal:** Turn the user's idea into a short, goal-focused prompt. Jules is a capable agent — it can read code, explore the repo, and figure out implementation details on its own. Your job is to clearly state WHAT to build, not HOW.
 
-**Your role:** Act as a prompt engineer and codebase researcher. Your job is to make the prompt *smarter*, not more *specific*. Jules does its own planning, code review, and decision-making — don't take that away from it.
+**Key principle:** Less is more. A shorter prompt gives Jules more room to think creatively. Over-specifying causes all agents to converge on the same (often wrong) solution.
 
 **Steps:**
 
@@ -158,53 +158,44 @@ When resuming, read the parent task metadata to determine current state and cont
 
    **For vague prompts:** Ask 1-2 focused questions to understand what they actually want. Don't over-interrogate.
 
-4. **Use the Explore agent** to research the codebase:
+4. **Use the Explore agent** to identify the tech stack:
 
    ```
    Task:
      subagent_type: "Explore"
      prompt: |
-       I need to understand this codebase well enough to give context to an AI coding
-       agent that will implement the following task:
+       Briefly identify the tech stack for this project:
+       - Language(s) and frameworks
+       - Build system / package manager
+       - Any verify/lint/test commands available
 
-       "[User's idea/request]"
-
-       Research and return:
-       1. Tech stack and key frameworks/libraries
-       2. Project structure conventions (where do components/modules/tests live?)
-       3. Relevant patterns the codebase already uses (state management, API patterns,
-          styling approach, etc.)
-       4. Any existing code that's closely related to this task
-
-       Keep it concise — just the facts an implementer would need to make good decisions.
+       That's it. Keep it to a few lines.
    ```
 
-5. **Craft the enhanced prompt.** This is the critical step. The output should read like a well-written prompt from a knowledgeable developer — NOT like a spec, plan, or instruction set.
+   **Do NOT ask the Explore agent to find relevant patterns, existing code, related files, or architectural details.** Jules will discover all of that itself. You only need the tech stack so you can mention it in one sentence.
 
-   **Prompt crafting principles:**
-   - Keep it in plain English, conversational tone
-   - State the GOAL clearly — what the user wants to achieve and how they'll know it's working
-   - Include codebase context as background info ("This project uses X, components live in Y")
-   - Do mention relevant architectural details Jules should be aware of
-   - Do mention any constraints or preferences the user expressed
-   - Don't prescribe HOW to solve the problem — that's Jules's job
-   - Don't list specific files to edit
-   - Don't diagnose specific bottlenecks or bugs — let Jules investigate
-   - Don't suggest specific solutions or technologies to use
-   - Don't include step-by-step implementation instructions
-   - Don't include commands to run
+5. **Craft the enhanced prompt.** Keep it SHORT. The ideal prompt is 2-5 sentences.
 
-   **The key test:** If your prompt reads like an answer to the problem, it's too prescriptive. The prompt should be the *question*, not the *answer*. Jules is a capable agent that can read code, profile performance, identify issues, and design solutions. Let it.
+   **What to include:**
+   - The goal: what to build/change and how the user will know it works (1-3 sentences)
+   - The tech stack in one sentence (e.g., "This is a Next.js app with Tailwind CSS.")
+   - Any hard constraints the user explicitly stated
+   - The operational instructions block (see below)
 
-   **Enhanced prompt structure:**
+   **What to NEVER include:**
+   - File paths, directory structures, or "see src/foo for examples"
+   - Architecture descriptions ("state management uses X pattern")
+   - Existing code patterns ("components are structured like Y")
+   - Diagnoses of problems or bottlenecks
+   - Suggested solutions or technologies
+   - Step-by-step instructions
+   - Commands to run
+   - Lists of files to modify
+
+   **The key test:** Count the sentences in your prompt (excluding the operational instructions). If it's more than 5, you're probably over-specifying. Jules can read the codebase — it doesn't need you to describe what's in it.
+
+   **Always end with this operational block (do not rephrase):**
    ```
-   [Clear statement of what to build/change and the success criteria — 1-3 sentences]
-
-   [Codebase context paragraph — tech stack, architecture, relevant patterns.
-   Written as background info, not instructions.]
-
-   [Any constraints or requirements the user cares about]
-
    Important:
    - Do NOT ask questions or request clarification — make reasonable decisions and proceed
    - Do NOT wait for user feedback at any point
@@ -213,25 +204,9 @@ When resuming, read the parent task metadata to determine current state and cont
      ./verify, etc.), run it. Otherwise run available linting/type-checking. Fix any errors.
    ```
 
-   **Example 1 — simple feature:**
+   **Example — simple feature:**
 
-   Bad (too prescriptive):
-   ```
-   ## Task
-   Add dark mode toggle to settings page
-
-   ## Plan
-   1. Create ThemeContext in src/contexts/ThemeContext.tsx
-   2. Modify src/components/Settings.tsx to add toggle
-   3. Update src/styles/globals.css with dark theme variables
-
-   ## Files to modify
-   - src/contexts/ThemeContext.tsx (create)
-   - src/components/Settings.tsx (modify)
-   - src/styles/globals.css (modify)
-   ```
-
-   Good (states goal, gives context, lets Jules decide how):
+   Too long (over-explains the codebase):
    ```
    Add a dark mode toggle to the settings page. The toggle should persist the
    user's preference and apply the theme immediately when changed.
@@ -241,23 +216,15 @@ When resuming, read the parent task metadata to determine current state and cont
    examples of how contexts are structured in this project.
    ```
 
-   **Example 2 — complex optimization (notice: NO diagnoses, NO prescribed solutions):**
-
-   Bad (does Jules's job — diagnoses every issue and prescribes solutions):
+   Right length (states goal, names tech stack, stops):
    ```
-   Optimize to support 50k particles at 60 FPS. The main bottlenecks are:
-   1. RENDERING (~8-15ms): 50k individual ctx.drawImage() calls. Switch to
-      WebGL instanced rendering — data is already in typed arrays.
-   2. SYNC OVERHEAD (~2-3ms): syncAliveCount() iterates all 150k slots.
-      Eliminate by having the worker maintain its own free list.
-   3. COLLISION (~4-8ms): Spatial hash cell size is 20px, too fine. Increase
-      to 40-60px. Reduce particleSolverIterations adaptively.
-   4. STATIC BODIES (~1-2ms): Vertices serialized every frame via postMessage.
-      Add a dirty flag and only re-send when modified.
-   Key files: src/renderer.js, src/particles.js, src/particle-worker.js...
+   Add a dark mode toggle to the settings page. It should persist the user's
+   preference and apply immediately. This is a Next.js app with Tailwind CSS.
    ```
 
-   Good (states the goal and context, lets Jules profile and decide):
+   **Example — complex optimization:**
+
+   Too long (diagnoses problems Jules should find itself):
    ```
    Optimize the physics and rendering systems to comfortably support 50,000
    particles at 60 FPS. Currently at 50k the frame rate drops noticeably.
@@ -272,6 +239,13 @@ When resuming, read the parent task metadata to determine current state and cont
    sync — one for the main thread and one for the worker.
 
    Keep Canvas 2D rendering as a fallback if you introduce an alternative.
+   ```
+
+   Right length (states goal and constraint, lets Jules profile and investigate):
+   ```
+   Optimize to support 50,000 particles at 60 FPS — currently the frame rate
+   drops noticeably at that count. This is a vanilla JS project (ES modules,
+   no bundler). Keep Canvas 2D as a fallback if you introduce an alternative.
    ```
 
 6. **Present the enhanced prompt to the user** for approval. Show them exactly what will be sent to Jules so they can adjust if needed.
@@ -296,10 +270,38 @@ When resuming, read the parent task metadata to determine current state and cont
 
 ## Phase 2: Dispatch
 
-**Goal:** Send the enhanced prompt to 3 Jules agents in parallel.
+**Goal:** Send the enhanced prompt to 3 Jules agents, each with a different strategic lens that encourages genuinely different solutions.
 
-**Strategy:**
-Each agent receives a **slightly rephrased version** of the same prompt. The meaning and requirements stay identical, but the wording varies — reordering sentences, using synonyms, restructuring paragraphs. This nudges Jules's non-deterministic problem-solving so each agent is more likely to explore a genuinely different path.
+**Strategy: Strategic Lenses (not rephrasing)**
+
+Do NOT just rephrase the same prompt 3 times — that causes all agents to converge on the same solution. Instead, each agent gets the same core prompt PLUS a short strategic nudge that steers it toward a different approach philosophy.
+
+The 3 lenses are:
+
+1. **Minimal** — "Solve this with the fewest changes possible. Prefer reusing what already exists over building new abstractions."
+2. **Thorough** — "Build a robust solution. Consider edge cases, error handling, and future maintainability."
+3. **Creative** — "Take a fresh approach. Consider unconventional solutions or different architectural patterns than what the codebase currently uses."
+
+These lenses are appended as a single sentence before the "Important:" block. They don't change the requirements — they nudge the agent's problem-solving style.
+
+**Example:** If the enhanced prompt is:
+```
+Add a dark mode toggle to the settings page. It should persist the user's
+preference and apply immediately. This is a Next.js app with Tailwind CSS.
+```
+
+Then Agent 1 gets:
+```
+Add a dark mode toggle to the settings page. It should persist the user's
+preference and apply immediately. This is a Next.js app with Tailwind CSS.
+
+Approach: Solve this with the fewest changes possible. Prefer reusing what already exists over building new abstractions.
+
+Important:
+- Do NOT ask questions or request clarification...
+```
+
+Agent 2 gets the same core prompt with the "Thorough" nudge, Agent 3 with the "Creative" nudge.
 
 **Steps:**
 
@@ -327,19 +329,20 @@ Each agent receives a **slightly rephrased version** of the same prompt. The mea
    ```
    Parse the output to extract `owner/repo` format (handle both HTTPS and SSH URLs).
 
-3. **Create 3 variations of the enhanced prompt.** Take the prompt from Phase 1 and rephrase it twice to create 3 total versions. Each variation must:
-   - Preserve the exact same requirements, constraints, and codebase context
-   - Change the wording: reorder sentences, use synonyms, restructure paragraphs
-   - Keep the same "Important" operational instructions section at the end (don't rephrase the "Do NOT ask questions" etc. — those should stay exact)
+3. **Build 3 prompts using the strategic lenses.** Take the enhanced prompt from Phase 1 and create 3 versions by inserting the lens nudge before the "Important:" block:
 
-   The goal is surface-level variation only — like three different developers describing the same task. Do NOT change what's being asked for, add new requirements, or remove any.
+   - **Agent 1 (Minimal):** `\n\nApproach: Solve this with the fewest changes possible. Prefer reusing what already exists over building new abstractions.\n\nImportant:...`
+   - **Agent 2 (Thorough):** `\n\nApproach: Build a robust solution. Consider edge cases, error handling, and future maintainability.\n\nImportant:...`
+   - **Agent 3 (Creative):** `\n\nApproach: Take a fresh approach. Consider unconventional solutions or different architectural patterns than what the codebase currently uses.\n\nImportant:...`
+
+   Do NOT rephrase or reword the core prompt. The only difference between the 3 prompts is the single "Approach:" sentence.
 
 4. Execute session creation (run these sequentially, not in parallel):
 
    ```bash
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<variation 1>" main "Crown Jules #1: <short task description>"
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<variation 2>" main "Crown Jules #2: <short task description>"
-   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<variation 3>" main "Crown Jules #3: <short task description>"
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<prompt with minimal lens>" main "Crown Jules #1 (Minimal): <short task description>"
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<prompt with thorough lens>" main "Crown Jules #2 (Thorough): <short task description>"
+   ~/.claude/skills/crown-jules/create-sessions.sh <owner/repo> 1 "<prompt with creative lens>" main "Crown Jules #3 (Creative): <short task description>"
    ```
 
    **IMPORTANT:**
@@ -360,14 +363,14 @@ Each agent receives a **slightly rephrased version** of the same prompt. The mea
        phase: "polling",
        repo: "<owner/repo>",
        sessions: [
-         {id: "<id1>", url: "<url1>", status: "Started"},
-         {id: "<id2>", url: "<url2>", status: "Started"},
-         {id: "<id3>", url: "<url3>", status: "Started"}
+         {id: "<id1>", url: "<url1>", status: "Started", lens: "Minimal"},
+         {id: "<id2>", url: "<url2>", status: "Started", lens: "Thorough"},
+         {id: "<id3>", url: "<url3>", status: "Started", lens: "Creative"}
        ]
      }
    ```
 
-7. Inform the user that 3 agents have been dispatched with the same prompt. Provide links to all sessions.
+7. Inform the user that 3 agents have been dispatched with different strategic lenses. Show the lens for each and provide links to all sessions.
 
 ---
 
@@ -549,7 +552,7 @@ After your evaluation, present results to the user:
 | [def456](url) | +245/-18 | 5 | 4 |
 | [ghi789](url) | +156/-15 | 4 | 2 |
 
-3. **How the solutions diverged**: Since all agents received the same prompt, highlight the interesting ways they chose different paths — different architectures, different libraries, different trade-offs. This is the value of running multiple agents.
+3. **How the solutions diverged**: Each agent had a different strategic lens (Minimal, Thorough, Creative). Highlight how the lenses influenced their approaches — did Minimal find an elegant shortcut? Did Creative try something unexpected? Did Thorough catch edge cases the others missed? This divergence is the whole point of running multiple agents.
 
 4. **Recommendation** with clear reasoning:
    - What made this implementation the best fit for the request
@@ -586,10 +589,10 @@ Interesting approach using system preference detection as the default, with the 
 
 ## How They Diverged
 
-All three agents received the same prompt but made different choices:
-- **abc123** used Tailwind's built-in dark mode with a simple context provider
-- **def456** built a custom CSS variable system, more flexible but more code
-- **ghi789** prioritized system preference detection, focusing on OS integration
+Each agent had a different strategic lens, which influenced their approach:
+- **abc123** (Minimal) used Tailwind's built-in dark mode with a simple context provider — fewest changes, leveraged existing tools
+- **def456** (Thorough) built a custom CSS variable system with localStorage persistence, error boundaries, and SSR handling
+- **ghi789** (Creative) took an unconventional approach with system preference detection as the primary mechanism, using the manual toggle as an override
 
 ## Recommendation
 
