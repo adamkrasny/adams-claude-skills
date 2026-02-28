@@ -186,6 +186,12 @@ Before finalizing a skill:
 - Over-explaining concepts Claude already knows
 - Deeply nested file references
 
+## Context Routing
+
+| When working on... | Read this file... |
+|---------------------|-------------------|
+| Doc audit state/history | `docs/.doc-gardening.json` |
+
 ## When Modifying Skills
 
 1. Read the existing skill completely before making changes

@@ -1,0 +1,29 @@
+{
+  "lastRun": "2026-02-28T12:00:00Z",
+  "lastCommit": "c92bd69a4721a2ec12eb0ce9c9b7fcf1e8421710",
+  "dirty": false,
+  "documentsAudited": [
+    "AGENTS.md",
+    "README.md",
+    "skills/crown-jules/SKILL.md",
+    ".claude/skills/doc-gardening/SKILL.md",
+    ".claude/skills/skill-feedback/SKILL.md"
+  ],
+  "issuesFound": 5,
+  "issuesFixed": 3,
+  "findings": {
+    "errors": [
+      "README.md: Workflow phase 1 called 'Planning' but SKILL.md calls it 'Prompt Crafting' -- fixed",
+      "README.md: Approach names 'Robust'/'Maintainable' inconsistent with SKILL.md 'Thorough'/'Creative' -- fixed"
+    ],
+    "warnings": [
+      "crown-jules/SKILL.md: Duplicated content between Prerequisites and Important Notes sections -- fixed by removing redundant Important Notes"
+    ],
+    "suggestions": [
+      "README.md: 'npx skills add' installation command references a tool that may not exist yet -- left as-is (may be aspirational)",
+      "Project has no CLAUDE.md; uses AGENTS.md instead -- intentional design choice, no action needed"
+    ]
+  },
+  "blindSpots": [],
+  "outcome": "all fixed"
+}
