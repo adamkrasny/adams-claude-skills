@@ -1,0 +1,8 @@
+{
+  "preservePatterns": [
+    ".env", ".env.keys", ".env.local", ".env.*.local", ".envrc"
+  ],
+  "scripts": {
+    "setup": "git pull --rebase origin main"
+  }
+}
